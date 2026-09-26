@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dashboard · SBAC</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar__brand">
+      <div class="sidebar__brand-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
+      </div>
+      <div>
+        <div class="sidebar__brand-title">SBAC</div>
+        <div class="sidebar__brand-subtitle">Sistema de backup<br/>Aquarismo Charrua</div>
+      </div>
+    </div>
+
+    <nav class="sidebar__nav">
+      <a class="sidebar__link is-active" href="dashboard.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Dashboard
+      </a>
+      <a class="sidebar__link" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg>
+        Nova Execução
+      </a>
+      <a class="sidebar__link" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.7L3 8"/><path d="M3 3v5h5"/></svg>
+        Histórico
+      </a>
+      <a class="sidebar__link" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19h16M4 15h10M4 11h16M4 7h10"/></svg>
+        Logs
+      </a>
+      <a class="sidebar__link" href="configuracoes.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        Configurações
+      </a>
+    </nav>
+
+    <div class="sidebar__footer">SBAC · Ambiente acadêmico</div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <div class="main__header">
+      <div>
+        <div class="eyebrow">Visão geral</div>
+        <h1 class="page-title">Dashboard</h1>
+      </div>
+      <span class="status-pill status-pill--ok" id="system-status-pill">
+        <span class="status-pill__dot"></span> Sistema operacional
+      </span>
+    </div>
+
+    <!-- Métricas -->
+    <div class="grid grid--metrics" id="metrics-grid">
+      <div class="card metric-card">
+        <div class="metric-card__top">
+          Backups este mês
+          <span class="metric-card__icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="10" rx="1"/><path d="M7 14h4"/></svg>
+          </span>
+        </div>
+        <div class="metric-card__value" id="metric-count">—</div>
+        <div class="metric-card__hint" id="metric-count-hint">carregando…</div>
+      </div>
+
+      <div class="card metric-card">
+        <div class="metric-card__top">
+          Último resultado
+          <span class="metric-card__icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+          </span>
+        </div>
+        <div class="metric-card__value" style="font-size:16px;">
+          <span class="badge badge--ok" id="metric-last-result">—</span>
+        </div>
+        <div class="metric-card__hint" id="metric-last-result-hint">carregando…</div>
+      </div>
+
+      <div class="card metric-card">
+        <div class="metric-card__top">
+          Próxima execução
+          <span class="metric-card__icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          </span>
+        </div>
+        <div class="metric-card__value" style="font-size:16px;" id="metric-next-run">—</div>
+        <div class="metric-card__hint" id="metric-next-run-hint">carregando…</div>
+      </div>
+    </div>
+
+    <div class="grid grid--two">
+
+      <!-- Execução em andamento -->
+      <div class="card" id="execution-card">
+        <div class="card__header" style="display:flex; align-items:center; justify-content:space-between;">
+          <div>
+            <h2 class="card__title">Execução em andamento</h2>
+            <p class="card__subtitle" id="execution-subtitle">Nenhuma execução em andamento.</p>
+          </div>
+          <span class="badge badge--running" id="execution-badge" style="display:none;">Em andamento</span>
+        </div>
+
+        <div id="execution-body" style="display:none;">
+          <div class="progress-row">
+            <span id="execution-step-label">—</span>
+            <span id="execution-percent">0%</span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-fill" id="execution-progress-fill" style="width:0%"></div>
+          </div>
+        </div>
+
+        <div id="execution-empty">
+          <button class="btn btn--secondary" id="go-to-new-execution">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5v14"/></svg>
+            Iniciar nova execução
+          </button>
+        </div>
+      </div>
+
+      <!-- Visão geral do sistema -->
+      <div class="card">
+        <h2 class="card__title" style="margin-bottom:14px;">Visão geral do sistema</h2>
+        <div class="grid" style="grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+          <div>
+            <div class="card__subtitle" style="margin-bottom:4px;">Banco em backup</div>
+            <div style="font-weight:700;" id="overview-alvo">—</div>
+          </div>
+          <div>
+            <div class="card__subtitle" style="margin-bottom:4px;">Última execução</div>
+            <div style="font-weight:700;" id="overview-last-run">—</div>
+          </div>
+          <div>
+            <div class="card__subtitle" style="margin-bottom:4px;">Política de retenção</div>
+            <div style="font-weight:700;" id="overview-retention">—</div>
+          </div>
+        </div>
+        <div class="card__subtitle" style="margin-bottom:4px;">Estado do sistema</div>
+        <p style="margin:0 0 8px;" id="overview-state-text">Carregando estado do sistema…</p>
+        <span class="badge badge--ok" id="overview-state-badge">Operacional</span>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  const percentFmt = (n) => `${Math.round(n)}%`;
+
+  function setStatusPill(status) {
+    // status: "ok" | "warn" | "error"
+    const el = document.getElementById("system-status-pill");
+    const map = {
+      ok: ["status-pill--ok", "Sistema operacional"],
+      warn: ["status-pill--warn", "Atenção necessária"],
+      error: ["status-pill--error", "Falha no sistema"],
+    };
+    const [cls, label] = map[status] || map.ok;
+    el.className = `status-pill ${cls}`;
+    el.innerHTML = `<span class="status-pill__dot"></span> ${label}`;
+  }
+
+  async function loadSummary() {
+    try {
+      const s = await Api.getDashboardSummary();
+
+      document.getElementById("metric-count").textContent = s.backupsThisMonth ?? "—";
+      document.getElementById("metric-count-hint").textContent = s.backupsThisMonthHint ?? "";
+
+      const resultBadge = document.getElementById("metric-last-result");
+      resultBadge.textContent = s.lastResult?.label ?? "—";
+      resultBadge.className = `badge badge--${s.lastResult?.tone ?? "ok"}`;
+      document.getElementById("metric-last-result-hint").textContent = s.lastResult?.hint ?? "";
+
+      document.getElementById("metric-next-run").textContent = s.nextRun?.label ?? "—";
+      document.getElementById("metric-next-run-hint").textContent = s.nextRun?.hint ?? "";
+
+      document.getElementById("overview-alvo").textContent = s.overview?.alvo ?? "—";
+      document.getElementById("overview-last-run").textContent = s.overview?.lastRun ?? "—";
+      document.getElementById("overview-retention").textContent = s.overview?.retention ?? "—";
+      document.getElementById("overview-state-text").textContent = s.overview?.stateText ?? "";
+
+      const stateBadge = document.getElementById("overview-state-badge");
+      stateBadge.textContent = s.overview?.stateLabel ?? "Operacional";
+      stateBadge.className = `badge badge--${s.overview?.stateTone ?? "ok"}`;
+
+      setStatusPill(s.systemStatus ?? "ok");
+    } catch (err) {
+      console.warn("Não foi possível carregar o resumo do dashboard:", err.message);
+      setStatusPill("warn");
+    }
+  }
+
+  function renderExecutionRunning(data) {
+    document.getElementById("execution-empty").style.display = "none";
+    document.getElementById("execution-body").style.display = "block";
+    document.getElementById("execution-badge").style.display = "inline-flex";
+    document.getElementById("execution-subtitle").textContent = data.executionId ?? "";
+    document.getElementById("execution-step-label").textContent = data.stepLabel ?? "Processando…";
+    document.getElementById("execution-percent").textContent = percentFmt(data.percent ?? 0);
+    document.getElementById("execution-progress-fill").style.width = `${data.percent ?? 0}%`;
+  }
+
+  function renderExecutionEmpty() {
+    document.getElementById("execution-empty").style.display = "block";
+    document.getElementById("execution-body").style.display = "none";
+    document.getElementById("execution-badge").style.display = "none";
+    document.getElementById("execution-subtitle").textContent = "Nenhuma execução em andamento.";
+  }
+
+  async function watchCurrentExecution() {
+    try {
+      const current = await Api.getCurrentExecution();
+      if (!current) {
+        renderExecutionEmpty();
+        return;
+      }
+      renderExecutionRunning(current);
+
+      // Acompanha o progresso em tempo real via Server-Sent Events.
+      Api.subscribeToExecution(current.executionId, {
+        onProgress: renderExecutionRunning,
+        onDone: (result) => {
+          renderExecutionEmpty();
+          loadSummary(); // atualiza os cards após a conclusão
+          setStatusPill(result.status === "success" ? "ok" : "error");
+        },
+        onError: () => {
+          // conexão SSE caiu; os dados voltam a ser atualizados na próxima checagem
+        },
+      });
+    } catch (err) {
+      console.warn("Não foi possível verificar a execução atual:", err.message);
+      renderExecutionEmpty();
+    }
+  }
+
+  document.getElementById("go-to-new-execution").addEventListener("click", async (evt) => {
+    // Enquanto a tela "Nova Execução" real não estiver pronta, este botão
+    // dispara uma execução SIMULADA (via /api/executions/demo-start) só para
+    // você testar o Dashboard de ponta a ponta. Troque por
+    // window.location.href = "nova-execucao.html" quando ela existir.
+    const btn = evt.currentTarget;
+    btn.disabled = true;
+    try {
+      await Api.startDemoExecution();
+      watchCurrentExecution();
+    } catch (err) {
+      alert(`Não foi possível iniciar a execução: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  loadSummary();
+  watchCurrentExecution();
+</script>
+</body>
+</html>
