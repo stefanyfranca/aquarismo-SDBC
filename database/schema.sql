@@ -80,7 +80,7 @@ CREATE TABLE configuracoes_backup (
     id                SERIAL PRIMARY KEY,
     banco             VARCHAR(100) NOT NULL,
     caminho_destino   VARCHAR(255) NOT NULL,
-    qtd_manter        INTEGER NOT NULL DEFAULT 7,
+    qtd_manter        INTEGER NOT NULL DEFAULT 7 CHECK (qtd_manter > 0),
     caminho_copia     VARCHAR(255),
     criptografar      BOOLEAN NOT NULL DEFAULT false,
     compactar         BOOLEAN NOT NULL DEFAULT false,
@@ -95,7 +95,14 @@ CREATE TABLE execucoes (
     decisao_manutencao     VARCHAR(30) CHECK (decisao_manutencao IN ('NENHUMA','VACUUM','VACUUM_ANALYZE','VACUUM_FULL_ANALYZE')),
     regra_aplicada         VARCHAR(255),
     status                 VARCHAR(20) NOT NULL DEFAULT 'em_andamento' CHECK (status IN ('em_andamento','sucesso','falha')),
-    resultado               VARCHAR(255)
+    resultado               VARCHAR(255),
+    CONSTRAINT chk_execucao_datas CHECK (
+        data_fim IS NULL OR data_fim >= data_inicio
+    ),
+    CONSTRAINT chk_execucao_sucesso_completo CHECK (
+        status <> 'sucesso'
+        OR (data_fim IS NOT NULL AND NULLIF(BTRIM(resultado), '') IS NOT NULL)
+    )
 );
 
 CREATE TABLE logs_execucao (

@@ -1,0 +1,15 @@
+# Node
+node_modules/
+
+# Variáveis de ambiente — nunca versionar credenciais
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# Sistema
+.DS_Store
+Thumbs.db
