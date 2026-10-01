@@ -1,413 +1,153 @@
-# Aquarismo SDBC
+# SBAC – Sistema de Backup Aquarismo Charrua
 
-Sistema de gerenciamento de loja de aquarismo com controle de backup do banco de dados.
+Plataforma web de gerenciamento de **backup e manutenção** de bancos PostgreSQL, com interface frontend em HTML/CSS/JS puros, API REST em Node.js/Express e progresso em tempo real via **Server-Sent Events (SSE)**.
 
-Este documento explica **como o projeto funciona**, **o que é necessário para rodar**, **como conectar ao PostgreSQL passo a passo** e **como o projeto está estruturado**.
+## Requisitos
 
----
+- **Node.js 22+** (usa `node:sqlite` builtin; testado no Node 24)
+- **PostgreSQL client tools** (`pg_dump`, `pg_restore`, `psql`) — no Windows, frequentemente em `C:\Program Files\PostgreSQL\<versão>\bin` (a aplicação detecta automaticamente; se não achar, peça o caminho na tela de Configurações)
+- **PostgreSQL server** (qualquer versão 12+; testado no PostgreSQL 18)
 
-## 1. Visão geral
-
-O projeto está dividido em três partes:
-
-| Pasta        | Descrição                                                                 |
-| ------------ | ------------------------------------------------------------------------- |
-| `database/`  | Scripts SQL do banco: `schema.sql` (estrutura) e `povoar-banco.sql` (carga) |
-| `backend/`   | API em **Node.js + Express** que se conecta ao PostgreSQL via `pg`        |
-| `frontend/`  | Aplicação web (SPA) em JavaScript puro, servida pelo Express            |
-| `documentos/`| Planejamento e modelagem do projeto                                       |
-
-O backend expõe um endpoint de saúde (`GET /api/health`) que testa a conexão com o banco em tempo real — consumido pelo frontend no indicador "Sistema operacional" do cabeçalho. O frontend (SPA) também aciona execuções de backup via `POST /api/execucoes` e acompanha o progresso em tempo real por SSE (`/api/execucoes/:id/eventos`). Veja as seções 7, 10, 11 e 12.
-
----
-
-## 2. Tecnologias
-
-- **Node.js** >= 20 (testado com v22)
-- **Express** 4 — servidor HTTP
-- **pg** 8 — driver/cliente do PostgreSQL
-- **dotenv** — carrega credenciais do arquivo `.env`
-- **PostgreSQL** >= 15 (local: v18)
-- **Frontend** — SPA em JavaScript puro (sem framework), consumindo a API via `fetch` e SSE (`EventSource`)
-- **7-Zip** — compactação ZIP com criptografia AES-256 no motor de backup (opcional)
-
----
-
-## 3. Pré-requisitos
-
-1. **[PostgreSQL](https://www.postgresql.org/download/)** instalado e o serviço rodando.
-2. **[Node.js](https://nodejs.org/)** (>= 20) e **npm** instalados.
-3. Acesso ao cliente `psql` (ou use o pgAdmin/outra ferramenta GUI).
-
-> **Dica (Windows):** se o `psql` não estiver no PATH, ele costuma ficar em
-> `C:\Program Files\PostgreSQL\<versão>\bin\`. Você pode executá-lo informando o caminho completo:
-> `& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres`
-
----
-
-## 4. Passo a passo — rodando o projeto
-
-Execute os comandos a partir da **raiz do repositório** (`aquarismo-SDBC/`).
-
-### 4.1 Instalar as dependências do backend
+## Instalação
 
 ```bash
-cd backend
 npm install
+npm start
 ```
 
-### 4.2 Criar o banco de dados
+A aplicação sobe em `http://127.0.0.1:3000` (se a porta estiver ocupada, tenta a próxima livre automaticamente e imprime a URL final no console).
 
-Crie o banco no PostgreSQL. Exemplo com o usuário `postgres` e banco `aquarismo_sdbc`:
+## Como usar
+
+1. **Conexão**: informe Host, Porta, Usuário, Senha e Banco. Clique em **Testar conexão** e depois **Conectar**. A senha fica somente em memória e nunca é enviada ao frontend após a conexão.
+2. **Dashboard**: visão geral (última manutenção, totais, resumo do banco).
+3. **Nova Execução**: configure destino, retenção, cópia adicional, manutenção (Automática/nenhuma/VACUUM/completa), compactação e criptografia. Acompanhe o andamento em tempo real via SSE.
+4. **Histórico**: lista execuções com duração, decisão, regra e log. Em sucesso, é possível **Restaurar e conferir integridade**.
+5. **Logs**: todos os registros com filtro por execução e nível.
+6. **Configurações**: destino padrão, retenção, pasta `bin` do PostgreSQL, e-mail de alerta, SMTP e **modo demonstração**.
+
+## Arquitetura
+
+```
+aquarismo-SDBC/
+  server.js               — entrada (porta 3000 → próxima livre)
+  src/
+    app.js                — Express, middlewares, segurança, rate limit
+    rotas.js              — API REST + SSE
+    pipeline.js           — orquestração das 8 etapas
+    manutencao.js         — decisão de manutenção (fontes A/B/simulada)
+    criptografia.js       — AES-256-GCM com scrypt (streaming)
+    zipaes.js             — descompactação WinZip AES (portável)
+    retencao.js           — retenção de backups
+    restauracao.js        — restauração + prova de integridade
+    email.js              — envio SMTP ou simulação comprovável
+    conexao.js            — pools, healthcheck, permissões
+    pgtools.js            — detecção de pg_dump/pg_restore
+    sessao.js             — sessões em memória (cookie HttpOnly)
+    db.js                 — SQLite local (node:sqlite)
+    mascara.js            — filtro de segredos em logs
+    validacao.js          — validação de nomes, portas, caminhos
+  public/                 — index.html, style.css, app.js
+  demo/                   — schema.sql, seed.sql (banco de demonstração)
+  tests/                  — testes automatizados (node:test)
+  data/                   — criada em runtime (metadados, logs, outbox)
+```
+
+## Decisões de projeto
+
+- **Metadados fora do banco-alvo**: a aplicação **não cria nenhuma tabela, schema ou função** no banco PostgreSQL. Todo o histórico, configurações e logs ficam em SQLite local (`data/`), fora do banco-alvo. Isso garante que a aplicação funciona em **qualquer banco**, inclusive um vazio.
+- **Segredos em memória**: senha do banco, chave AES e senha do ZIP ficam somente em memória (sessão do servidor) e nunca são gravadas em disco, log, resposta de API ou linha de comando. O `pg_dump` recebe a senha via `PGPASSWORD` no ambiente do processo filho (nunca em argumentos). Toda saída técnica passa por um filtro que mascara os segredos com `***`.
+- **Agnóstica ao banco**: nenhuma funcionalidade depende de tabelas específicas. A decisão de manutenção usa fontes que existem em qualquer PostgreSQL (histórico local + `pg_stat_user_tables`).
+
+## Formato dos arquivos
+
+### Criptografia AES-256-GCM (`.enc`)
+
+```
+[salt 16 bytes][IV 12 bytes][tag GCM 16 bytes][dados cifrados]
+```
+
+- Chave derivada por **scrypt** (N=16384, r=8, p=1) com salt aleatório por arquivo.
+- **Streaming** (não lê o dump inteiro em memória) — suporta bancos grandes.
+- O arquivo em claro é removido após a criptografia.
+
+### Compactação ZIP (`.zip`)
+
+- ZIP com criptografia **AES-256** (WinZip AES), gerado por `archiver-zip-encrypted`.
+- A descompactação é feita por módulo próprio (`src/zipaes.js`), portável e sem dependências externas.
+
+## Decisão de manutenção
+
+| Situação | Ação |
+|---|---|
+| Última manutenção há menos de 30 dias | Não executar |
+| Entre 30 e 60 dias | `VACUUM` |
+| Mais de 60 dias | `VACUUM FULL ANALYZE` |
+| Sem histórico | `VACUUM FULL ANALYZE` |
+
+- **Fonte A**: histórico local da plataforma (`manutencoes`).
+- **Fonte B**: `SELECT GREATEST(max(last_vacuum), max(last_analyze)) FROM pg_stat_user_tables` (ignora autovacuum).
+- Usa a **mais recente** entre A e B. A escolha explícita do usuário **prevalece** sobre a decisão automática.
+- **Modo demonstração**: data simulada substitui as fontes A/B (atalhos: 12, 43, 75 dias, sem histórico).
+
+## API (resumo)
+
+| Método | Rota | Descrição |
+|---|---|---|
+| POST | `/api/conexao/testar` | Testa credenciais |
+| POST | `/api/conexao` | Conecta (cria sessão) |
+| DELETE | `/api/conexao` | Desconecta |
+| GET | `/api/conexao/estado` | Healthcheck real (`SELECT 1`) |
+| GET | `/api/bancos` | Lista bancos disponíveis |
+| POST | `/api/bancos/selecionar` | Troca o banco da sessão |
+| GET/PUT | `/api/configuracao` | Configurações por conexão |
+| POST | `/api/validar` | Testa conexão, permissões e diretórios |
+| POST | `/api/decisao` | Prévia da decisão de manutenção |
+| POST | `/api/execucoes` | Inicia execução (202 + id; 409 se bloqueante) |
+| GET | `/api/execucoes` | Histórico com filtros |
+| GET | `/api/execucoes/:id` | Detalhe + log |
+| GET | `/api/execucoes/:id/eventos` | SSE (progresso em tempo real) |
+| POST | `/api/execucoes/:id/restaurar` | Restaura e confere integridade |
+| GET | `/api/logs` | Logs com filtros |
+| GET/PUT | `/api/demo` | Modo demonstração |
+
+## Testes automatizados
 
 ```bash
-psql -U postgres -h localhost -c "CREATE DATABASE aquarismo_sdbc;"
+npm test
 ```
 
-> Se o banco já existir ou você já o criou pela interface, pule esta etapa.
-
-### 4.3 Aplicar o schema (tabelas)
-
-```bash
-psql -U postgres -h localhost -d aquarismo_sdbc -f database/schema.sql
-```
-
-### 4.4 Popular o banco com dados de exemplo (opcional)
-
-```bash
-psql -U postgres -h localhost -d aquarismo_sdbc -f database/povoar-banco.sql
-```
-
-> O `povoar-banco.sql` apaga tudo que existir (`TRUNCATE ... RESTART IDENTITY CASCADE`)
-> e insere dados fictícios. Só rode **depois** do schema, senão falha por falta de tabelas.
-
-### 4.5 Configurar as credenciais no `.env`
-
-Copie o modelo e preencha com os seus valores:
-
-```bash
-cd backend
-copy .env.example .env        # Windows (cmd)
-# ou
-cp .env.example .env          # Linux/macOS
-```
-
-Depois edite o `backend/.env` com seus dados reais (host, porta, banco, usuário e senha):
-
-```
-PORT=3000
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=aquarismo_sdbc
-DB_USER=postgres
-DB_PASSWORD=sua_senha_aqui
-```
-
-> ⚠️ **Segurança:** o `.env` está no `.gitignore` e **nunca** deve ser versionado.
-> A senha é lida apenas em tempo de execução e nunca é impressa nos logs.
-> O `.env.example` versionado contém apenas placeholders.
-
-### 4.6 Validar a conexão com o banco (isoladamente, sem subir o servidor)
-
-```bash
-npm run test:db
-```
-
-Saída esperada em caso de sucesso:
-
-```
-Testando conexão com o PostgreSQL...
-Conexão OK
-  Banco ...: aquarismo_sdbc
-  Usuário .: postgres
-  Versão ..: PostgreSQL 18.x ...
-```
-
-Em caso de falha, o comando termina com código de saída **1** e exibe o motivo (sem a senha).
-
-### 4.7 Subir o servidor
-
-```bash
-npm run dev      # desenvolvimento (reinicia sozinho ao salvar)
-# ou
-npm start        # produção
-```
-
-O servidor sobe em `http://localhost:3000`.
-
-### 4.8 Testar o endpoint de saúde
-
-Abra no navegador ou use [cURL](https://curl.se/):
-
-```bash
-curl http://localhost:3000/api/health
-```
-
-Resposta em caso de sucesso:
-
-```json
-{
-  "status": "ok",
-  "servidor": "operacional",
-  "banco": {
-    "conectado": true,
-    "banco": "aquarismo_sdbc",
-    "versao": "PostgreSQL 18.x",
-    "horario_servidor": "2026-09-24T01:00:00.000Z",
-    "tempo_resposta_ms": 3
-  },
-  "timestamp": "2026-09-24T01:00:00.000Z"
-}
-```
-
-Se o banco estiver fora do ar, responde **HTTP 503** com `"banco": { "conectado": false }` e uma mensagem genérica (sem detalhes sensíveis).
-
----
-
-## 5. Scripts npm (`backend/package.json`)
-
-| Comando             | O que faz                                              |
-| ------------------- | ------------------------------------------------------ |
-| `npm install`       | Instala as dependências (`express`, `pg`, `dotenv`)   |
-| `npm run dev`       | Sobe o servidor com auto-reinício (watch)              |
-| `npm start`         | Sobe o servidor normalmente                            |
-| `npm run test:db`   | Testa a conexão com o PostgreSQL isoladamente          |
-
----
-
-## 6. Como o banco está projetado (`database/schema.sql`)
-
-### Tabelas de negócio (loja)
-
-| Tabela                   | Finalidade                                        |
-| ------------------------ | ------------------------------------------------- |
-| `clientes`               | Clientes da loja                                 |
-| `especies`               | Espécies de peixes, plantas e invertebrados      |
-| `lotes`                  | Lotes recebidos de cada espécie (estoque de peixes) |
-| `produtos_acessorios`    | Ração, filtros, decoração e equipamentos         |
-| `pedidos`                | Pedidos dos clientes (pendente/pago/enviado/cancelado) |
-| `itens_pedido`           | Itens de cada pedido (peixe ou acessório)        |
-| `movimentacoes_estoque`  | Entrada, venda ou perda de estoque               |
-
-### Tabelas de controle de backup
-
-| Tabela                | Finalidade                                                                  |
-| --------------------- | --------------------------------------------------------------------------- |
-| `configuracoes_backup`| Configuração de cada backup: banco alvo, caminho de destino, quantidade de cópias a manter, criptografia e compactação |
-| `execucoes`           | Cada execução de backup: início/fim, decisão de manutenção (`VACUUM` etc.), regra aplicada e status (`em_andamento`, `sucesso`, `falha`) |
-| `logs_execucao`       | Etapas detalhadas de cada execução (`etapa`, `mensagem`, `saida_tecnica`)  |
-
-Relação entre elas:
-
-```
-configuracoes_backup 1 ──── N execucoes 1 ──── N logs_execucao
-```
-
-Pontos relevantes da modelagem:
-
-- `execucoes.config_id` referencia `configuracoes_backup(id)` (uma configuração gera muitas execuções).
-- `logs_execucao.execucao_id` referencia `execucoes(id)` com `ON DELETE CASCADE` (apagar a execução apaga seus logs).
-- `configuracoes_backup.qtd_manter` define quantas cópias antigas manter.
-- `decisao_manutencao` guarda a manutenção sugerida: `NENHUMA`, `VACUUM`, `VACUUM_ANALYZE` ou `VACUUM_FULL_ANALYZE`.
-
----
-
-## 7. Como o backend está projetado
-
-```
-backend/
-├── package.json              # dependências e scripts npm
-├── .env.example              # modelo de configuração (placeholders)
-├── .env                      # credenciais reais — NÃO versionado (gitignore)
-└── src/
-    ├── index.js              # entrypoint: app Express, rotas, estáticos do frontend e middleware de erros
-    ├── database/
-    │   └── pool.js           # pool de conexões PostgreSQL (pg) lendo do .env
-    ├── routes/
-    │   ├── health.js         # rota GET /api/health
-    │   └── execucoes.js      # POST/GET de execuções + SSE de progresso (/eventos)
-    ├── services/
-    │   ├── backup-execution.service.js  # motor de backup (pg_dump, AES-256, ZIP, retenção, VACUUM)
-    │   └── execution-events.js          # pub/sub de eventos usado no streaming SSE
-    └── scripts/
-        └── test-db.js        # valida a conexão isoladamente (npm run test:db)
-```
-
-### Fluxo de uma requisição e de uma execução de backup
-
-```
-Navegador (SPA do frontend/)
-   │  fetch (JSON) + EventSource (SSE)
-   ▼
-Express (index.js)
-   ├── /api/health                  → health.js → pool.js → PostgreSQL → JSON
-   ├── /api/execucoes               → execucoes.js → backup-execution.service (assíncrono)
-   │                                    ├── pg_dump → arquivo .dump
-   │                                    ├── criptografia AES-256-GCM (opcional)
-   │                                    ├── compactação ZIP AES via 7-Zip (opcional)
-   │                                    ├── retenção (qtd_manter) e cópia adicional
-   │                                    └── grava etapas/status em logs_execucao e execucoes
-   ├── /api/execucoes/:id/eventos   → execution-events → eventos SSE ao navegador
-   └── /* (estáticos)               → index.html, src/app.js, styles.css
-```
-
-### Módulo de conexão (`src/database/pool.js`)
-
-- Cria um **pool de conexões** (`pg.Pool`) com limite `max` e timeout configuráveis.
-- Lê as credenciais do `.env` via `dotenv` — nenhum valor hardcoded no código.
-- Suporta dois modos de configuração:
-  - campos individuais `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`;
-  - ou uma única `DATABASE_URL` (ex.: `postgres://usuario:senha@host:5432/banco`), que tem prioridade.
-- Exporta `pool` e a função `pingDb()`, que executa uma consulta rápida e mede o tempo de resposta.
-
-### Endpoint de saúde (`GET /api/health`)
-
-Equivalente ao indicador de "Sistema operacional" do protótipo: confere se o banco está acessível e devolve versão, horário do servidor e tempo de resposta. Falhas retornam `503` sem expor detalhes internos.
-
----
-
-## 8. Variáveis de ambiente
-
-| Variável                    | Obrigatória | Padrão       | Descrição                                  |
-| --------------------------- | ----------- | ------------ | ------------------------------------------ |
-| `PORT`                      | não         | `3000`       | Porta do servidor HTTP                     |
-| `DB_HOST`                   | sim*        | `localhost`  | Host do PostgreSQL                          |
-| `DB_PORT`                   | sim*        | `5432`       | Porta do PostgreSQL                         |
-| `DB_NAME`                   | sim*        | —            | Nome do banco                               |
-| `DB_USER`                   | sim*        | —            | Usuário do banco                            |
-| `DB_PASSWORD`               | sim*        | —            | Senha do banco (apenas localmente / no env) |
-| `DATABASE_URL`              | não         | —            | URI de conexão única (sobrescreve os campos)|
-| `DB_POOL_MAX`               | não         | `10`         | Máximo de conexões simultâneas no pool      |
-| `DB_CONNECTION_TIMEOUT_MS`  | não         | `5000`       | Timeout de conexão em milissegundos         |
-| `DB_SSL`                    | não         | `false`      | Habilita SSL (servidores remotos)           |
-| `BACKUP_ALLOWED_ROOTS`      | sim**       | —            | Caminhos autorizados para gravar backups (separados por `;`) |
-| `PG_DUMP_PATH`              | não         | `pg_dump`    | Caminho do executável `pg_dump`            |
-| `SEVEN_ZIP_PATH`            | não         | `7z`         | Caminho do executável do 7-Zip             |
-| `ZIP_PASSWORD`              | não**       | —            | Senha do ZIP quando `compactacao` estiver ativa |
-| `BACKUP_ENCRYPTION_KEY`     | não**       | —            | Chave AES-256 (32 bytes) em base64, usada na criptografia |
-
-\* Quando não for usada a `DATABASE_URL`.
-\** Obrigatória apenas se a respectiva funcionalidade for utilizada (execução de backup / compactação / criptografia).
-
----
-
-## 9. Segurança
-
-- **Nunca** commitar o `.env` — ele está no `.gitignore`.
-- A senha é lida do ambiente em tempo de execução; não aparece no código nem nos logs.
-- O `.env.example` (versionado) contém apenas placeholders como `sua_senha_aqui`.
-- O endpoint `/api/health` não expõe detalhes de erro da conexão ao cliente.
-
----
-
-## 10. Execuções de backup
-
-`POST /api/execucoes` inicia o trabalho em segundo plano e devolve `202 Accepted`.
-O andamento pode ser consultado em `GET /api/execucoes/:id` ou acompanhado por SSE
-em `GET /api/execucoes/:id/eventos`.
-
-Exemplo:
-
-```json
-{
-  "banco": "aquarismo_sdbc",
-  "destino": "C:\\backups\\principal",
-  "qtd_manter": 7,
-  "caminho_copia_adicional": "C:\\backups\\copia",
-  "compactacao": false,
-  "criptografia": false,
-  "manutencao_explicita": "vacuum"
-}
-```
-
-`destino` e `caminho_copia_adicional` devem ser caminhos absolutos dentro de
-`BACKUP_ALLOWED_ROOTS`. Para executar backup real, configure `PG_DUMP_PATH`; para
-ZIP AES protegido, instale/configure o 7-Zip em `SEVEN_ZIP_PATH` e defina
-`ZIP_PASSWORD`. A opção de criptografia requer `BACKUP_ENCRYPTION_KEY`, uma chave
-AES-256 de 32 bytes codificada em base64.
-
-Em bancos existentes, execute uma vez `database/migrations/001_execucoes_validacoes.sql`
-para adicionar as regras de integridade de configuração e execução.
-
----
-
-## 11. Como o frontend e o backend estão conectados
-
-O `frontend/` é uma SPA em JavaScript puro (sem framework e sem etapa de build),
-servida pelo próprio Express em `app.use(express.static(.../frontend))`. Ao abrir
-`http://localhost:3000`, o backend entrega `index.html`, `styles.css` e o módulo
-`src/app.js`.
-
-### Arquivos do frontend
-
-| Arquivo        | Responsabilidade                                         |
-| -------------- | -------------------------------------------------------- |
-| `index.html`   | Página única: contêiner `#app` e carregamento do módulo  |
-| `src/app.js`   | SPA: shell com sidebar, rotas por hash e telas           |
-| `src/api.js`   | Camada de comunicação com o backend (`fetch` + SSE) e mocks |
-| `src/mocks.js` | Dados de exemplo (histórico, logs, configuração)         |
-| `styles.css`   | Estilos da interface                                     |
-
-### Rotas da SPA (hash)
-
-`#dashboard`, `#nova-execucao`, `#historico`, `#logs` e `#configuracoes`.
-A troca de tela é feita pelo evento `hashchange`, sem recarregar a página.
-
-### Como o front consome o backend (`src/api.js`)
-
-| Funcionalidade                   | Chamada                                            |
-| -------------------------------- | -------------------------------------------------- |
-| Indicador "Sistema operacional"  | `GET /api/health` (no cabeçalho da SPA)            |
-| Iniciar backup manual            | `POST /api/execucoes` (`fetch`)                    |
-| Consultar status e logs          | `GET /api/execucoes/:id` (`fetch`)                 |
-| Progresso em tempo real          | `GET /api/execucoes/:id/eventos` (SSE via `EventSource`) |
-| Histórico, logs e configurações  | dados `mock` (ainda não conectados a endpoints)    |
-
-Na tela **Nova Execução**: o usuário preenche o formulário → `POST /api/execucoes`
-recebe `202` com o id da execução → a SPA abre um `EventSource` em `/eventos` e
-atualiza a barra de progresso conforme os eventos `progresso` (etapa/mensagem) e
-`concluida` (status final). Há também um *polling* de fallback a cada 2,5 s caso o
-SSE falhe.
-
-O "Sistema operacional" do cabeçalho usa `getHealth()`; com o banco offline, a SPA
-mostra o indicador em vermelho como "Sistema indisponível".
-
-> **Estado atual:** as telas de Histórico, Logs e Configurações ainda usam dados de
-> `mocks.js` (em memória), para a UI funcionar sem backend. Conectar essas telas à
-> API é o próximo passo.
-
----
-
-## 12. Resumo das últimas alterações
-
-### Backend
-- **Motor de execução de backup** (`src/services/backup-execution.service.js`):
-  gera `pg_dump` (formato custom), criptografa com AES-256-GCM, compacta em ZIP com
-  AES via 7-Zip, aplica retenção (`qtd_manter`), copia opcionalmente para um segundo
-  destino e registra tudo em `configuracoes_backup`, `execucoes` e `logs_execucao`.
-- **Manutenção automática**: decide `NENHUMA` (< 30 dias), `VACUUM` (30–60 dias) ou
-  `VACUUM_FULL_ANALYZE` (> 60 dias) com base no histórico — ou aceita
-  `manutencao_explicita` no corpo da requisição.
-- **Segurança no motor**: `BACKUP_ALLOWED_ROOTS` restringe caminhos de destino;
-  banco validado como identificador PostgreSQL; saída técnica redigida
-  (senhas/chaves/URIs mascaradas) nos logs; senha enviada ao processo filho apenas
-  via `PGPASSWORD`.
-- **Novas rotas** (`src/routes/execucoes.js`): `POST /api/execucoes`,
-  `GET /api/execucoes/:id` e `GET /api/execucoes/:id/eventos` (SSE), apoiadas pelo
-  `src/services/execution-events.js`.
-- **`index.js`**: passou a servir o frontend e ganhou middleware de erro com status.
-
-### Frontend
-- Nova SPA completa: Dashboard, Nova Execução, Histórico, Logs e Configurações.
-- Integração real com o backend em execuções (`POST`/`GET`/SSE) e em `/api/health`.
-- `src/api.js` centraliza a comunicação; `src/mocks.js` fornece dados de exemplo.
-
-### Banco de dados
-- `schema.sql`: novas restrições (`qtd_manter > 0`; `data_fim >= data_inicio`;
-  status `sucesso` exige `data_fim` e `resultado`).
-- Nova migração `database/migrations/001_execucoes_validacoes.sql` para bancos já
-  existentes (mesmas validações).
-
-### Configuração
-- Novas variáveis de ambiente do motor de backup (ver seção 8): `BACKUP_ALLOWED_ROOTS`,
-  `PG_DUMP_PATH`, `SEVEN_ZIP_PATH`, `ZIP_PASSWORD`, `BACKUP_ENCRYPTION_KEY`.
+Cobrem: regra de decisão (11, 29/30, 60/61 dias, sem data, escolha explícita), validação de caminhos/nomes (injeção, `..`), retenção, criptografia ida-e-volta, mascaramento de segredos e varredura de segredos no código. Teste de integração com PostgreSQL local incluído (pula se não houver servidor).
+
+## Matriz de testes (cenários de aceite)
+
+| # | Cenário | Como executar | Status |
+|---|---|---|---|
+| 1 | Automática sem manutenção (< 30 dias) | Modo demo → 12 dias → executar | ✅ Verificado |
+| 2 | Automática com VACUUM (30–60 dias) | Modo demo → 43 dias → executar | ✅ Verificado |
+| 3 | Automática com VACUUM FULL ANALYZE (> 60 dias) | Modo demo → 75 dias → confirmar diálogo | ✅ Verificado |
+| 4 | VACUUM FULL ANALYZE sem histórico | Modo demo → sem histórico → executar | ✅ Verificado |
+| 5 | Escolha manual prevalecendo | Escolher VACUUM mesmo com > 60 dias | ✅ Verificado |
+| 6 | Backup simples com sucesso | Executar sem opções | ✅ Verificado |
+| 7 | Backup com criptografia + compactação | Ligar ambas as opções | ✅ Verificado |
+| 8 | Retenção (manter 2, rodar 4 vezes) | Quantidade=2, executar 4× | ✅ Verificado |
+| 9 | Cópia adicional verificada | Informar cópia adicional | ✅ Verificado (hash SHA-256) |
+| 10 | Falha controlada com log + e-mail | Modo demo → simular falha | ✅ Verificado |
+| 11 | Restauração + integridade | Histórico → Detalhes → Restaurar | ✅ Verificado |
+| 12 | Funciona em banco vazio e no demo | Testado em `sbac_vazio` e `sbac_demo` | ✅ Verificado |
+| 13 | Nenhum segredo em logs/código/repositório | `npm test` (varredura automatizada) | ✅ Verificado |
+| 14 | Nunca cria objetos no banco-alvo | Comparar `pg_catalog` antes/depois | ✅ Verificado |
+
+## Solução de problemas
+
+- **Porta ocupada**: a aplicação tenta automaticamente a próxima porta livre (3001, 3002, …) e imprime a URL final.
+- **Autenticação falha**: verifique usuário/senha. A mensagem é clara em português (senha incorreta, host inacessível, banco inexistente).
+- **`pg_dump` não encontrado**: no Windows, informe a pasta `bin` do PostgreSQL em **Configurações → Pasta bin do PostgreSQL**.
+- **Incompatibilidade de versão**: se `pg_dump` for mais antigo que o servidor, a aplicação avisa e pede atualização das ferramentas.
+- **E-mail não enviado**: sem SMTP configurado, o e-mail é **simulado** e gravado em `data/outbox/email-execucao-N.json/.eml`.
+
+## Limitações
+
+- A restauração de ZIPs com AES-256 usa o módulo próprio (`src/zipaes.js`); para ZIPs sem criptografia, também funciona.
+- O modo demonstração é por conexão e fica salvo localmente.
+- A aplicação serve apenas em `127.0.0.1` por padrão.
