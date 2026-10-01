@@ -411,3 +411,16 @@ mostra o indicador em vermelho como "Sistema indisponível".
 ### Configuração
 - Novas variáveis de ambiente do motor de backup (ver seção 8): `BACKUP_ALLOWED_ROOTS`,
   `PG_DUMP_PATH`, `SEVEN_ZIP_PATH`, `ZIP_PASSWORD`, `BACKUP_ENCRYPTION_KEY`.
+
+## Restauracao e teste de integridade
+
+Apos gerar um backup custom (`.dump`), restaure-o em um banco novo de validacao sem sobrescrever o banco da aplicacao:
+
+```powershell
+cd backend
+npm run restore -- "C:\caminho\autorizado\backup-aquarismo_sdbc-...dump" aquarismo_sdbc_validacao
+```
+
+O nome de destino deve ser novo e diferente de `DB_NAME`. O script cria o banco, executa `pg_restore --exit-on-error` e compara exatamente as quantidades das tabelas de negocio. As contagens das tabelas de controle sao informadas separadamente, pois o proprio backup registra novas etapas depois do instante do dump. Se houver falha, o banco criado e mantido para inspecao; o script nunca apaga ou substitui bancos existentes. O arquivo precisa estar dentro de uma raiz listada em `BACKUP_ALLOWED_ROOTS`. Esta verificacao cobre arquivos `.dump` sem criptografia/compactacao.
+
+Defina `PG_DUMP_PATH`, `PG_RESTORE_PATH`, `BACKUP_ALLOWED_ROOTS` e `BACKUP_DEFAULT_DESTINATION` em `backend/.env`. O caminho padrao precisa pertencer a uma raiz autorizada. Compactacao e criptografia sao opcionais e exigem suas ferramentas/chaves.

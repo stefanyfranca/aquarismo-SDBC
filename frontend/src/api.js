@@ -1,5 +1,3 @@
-import { mockConfig, mockExecucoes, mockLogs } from './mocks.js';
-
 const json = async (response) => {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.erro || 'Não foi possível concluir a solicitação.');
@@ -9,7 +7,9 @@ const json = async (response) => {
 export const useExecucoes = {
   iniciar: (dados) => fetch('/api/execucoes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dados) }).then(json),
   obter: (id) => fetch(`/api/execucoes/${id}`).then(json),
-  listar: async () => mockExecucoes,
+  listar: () => fetch('/api/execucoes').then(json),
+  cenarioAtivo: () => fetch('/api/execucoes/cenarios-demonstracao/ativo').then(json),
+  prepararCenario: (cenario) => fetch('/api/execucoes/cenarios-demonstracao', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cenario }) }).then(json),
   acompanhar(id, onProgress, onDone, onError) {
     const source = new EventSource(`/api/execucoes/${id}/eventos`);
     source.addEventListener('progresso', (event) => onProgress(JSON.parse(event.data)));
@@ -20,13 +20,16 @@ export const useExecucoes = {
 };
 
 export const useLogs = {
-  listar: async ({ execucao, etapa }) => mockLogs.filter((item) => (!execucao || String(item.execucao_id) === execucao) && (!etapa || item.etapa === etapa))
+  listar: async ({ execucao, etapa }) => {
+    if (!execucao) return [];
+    const data = await fetch(`/api/execucoes/${execucao}`).then(json);
+    return (data.logs || []).filter((item) => !etapa || item.etapa === etapa).map((item) => ({ ...item, execucao_id: data.id }));
+  }
 };
 
-let savedConfig = { ...mockConfig };
 export const useConfig = {
-  obter: async () => ({ ...savedConfig }),
-  salvar: async (config) => { savedConfig = { ...config }; return { ...savedConfig }; }
+  obter: () => fetch('/api/configuracoes').then(json),
+  salvar: (config) => fetch('/api/configuracoes', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) }).then(json)
 };
 
 export const getHealth = async () => {

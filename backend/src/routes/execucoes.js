@@ -1,8 +1,24 @@
 const { Router } = require('express');
-const { startExecution, getExecution } = require('../services/backup-execution.service');
+const { startExecution, getExecution, listExecutions, prepareMaintenanceScenario, getPreparedMaintenanceScenario } = require('../services/backup-execution.service');
 const { subscribe } = require('../services/execution-events');
 
 const router = Router();
+
+router.get('/cenarios-demonstracao/ativo', async (_req, res, next) => {
+  try { res.json(await getPreparedMaintenanceScenario()); } catch (error) { next(error); }
+});
+
+router.post('/cenarios-demonstracao', async (req, res, next) => {
+  try { res.status(201).json(await prepareMaintenanceScenario(req.body?.cenario)); } catch (error) { next(error); }
+});
+
+router.get('/', async (req, res, next) => {
+  try {
+    res.json(await listExecutions());
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.post('/', async (req, res, next) => {
   try {

@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test:db": "node src/scripts/test-db.js"
+    "test:db": "node src/scripts/test-db.js",
+    "test": "node --test test/maintenance-decision.test.js",
+    "restore": "node src/scripts/restore-backup.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

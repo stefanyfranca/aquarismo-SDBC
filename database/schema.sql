@@ -114,6 +114,27 @@ CREATE TABLE logs_execucao (
     saida_tecnica  TEXT
 );
 
+-- Controle isolado dos cenarios de demonstracao; nao altera dados da loja.
+CREATE TABLE cenarios_demonstracao_manutencao (
+    id UUID PRIMARY KEY,
+    chave VARCHAR(40) NOT NULL CHECK (chave IN ('menos_30', 'entre_30_60', 'acima_60', 'sem_historico')),
+    data_ultima_manutencao TIMESTAMP,
+    preparado_em TIMESTAMP NOT NULL DEFAULT now(),
+    consumido_em TIMESTAMP,
+    execucao_id INTEGER REFERENCES execucoes(id) ON DELETE SET NULL
+);
+
+ALTER TABLE execucoes
+    ADD COLUMN cenario_demonstracao_id UUID REFERENCES cenarios_demonstracao_manutencao(id),
+    ADD COLUMN cenario_demonstracao VARCHAR(80),
+    ADD COLUMN historico_manutencao_em TIMESTAMP,
+    ADD COLUMN dias_desde_manutencao NUMERIC(8,2),
+    ADD COLUMN manutencao_executada VARCHAR(30),
+    ADD COLUMN caminho_arquivo_backup TEXT;
+
 CREATE INDEX idx_execucoes_config ON execucoes(config_id);
 CREATE INDEX idx_execucoes_data ON execucoes(data_inicio);
 CREATE INDEX idx_logs_execucao ON logs_execucao(execucao_id);
+CREATE INDEX idx_cenarios_demo_pendente
+    ON cenarios_demonstracao_manutencao(preparado_em DESC)
+    WHERE consumido_em IS NULL;

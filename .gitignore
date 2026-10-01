@@ -13,3 +13,7 @@ logs/
 # Sistema
 .DS_Store
 Thumbs.db
+# Local PostgreSQL backup artifacts
+/backups/
+/backend/.env
+

@@ -5,12 +5,14 @@ require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const healthRoutes = require('./routes/health');
 const execucoesRoutes = require('./routes/execucoes');
+const configuracoesRoutes = require('./routes/configuracoes');
 
 const app = express();
 
 app.use(express.json());
 app.use('/api/health', healthRoutes);
 app.use('/api/execucoes', execucoesRoutes);
+app.use('/api/configuracoes', configuracoesRoutes);
 app.use(express.static(path.resolve(__dirname, '../../frontend')));
 
 app.use((err, _req, res, _next) => {
