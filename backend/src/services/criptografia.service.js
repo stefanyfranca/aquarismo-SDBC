@@ -92,7 +92,8 @@ async function criptografarArquivo(origem, destino, opcoes = {}) {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv(ALGORITMO, chave, iv);
   const entrada = fs.createReadStream(origem, { highWaterMark: TAMANHO_BLOCO });
-  const saida = fs.createWriteStream(destino);
+  await fsp.writeFile(destino, Buffer.alloc(TAMANHO_CABECALHO));
+  const saida = fs.createWriteStream(destino, { flags: 'r+', start: TAMANHO_CABECALHO });
   const pararProgresso = progressoAgendado(opcoes.onProgress);
   try {
     await pipeline(entrada, cipher, saida);

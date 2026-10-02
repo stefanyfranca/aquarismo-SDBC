@@ -20,8 +20,9 @@ const METODO_AES = 99;
 const VERSAO_AES = 51;
 const FORTE_AES = 0x03;
 const ITERACOES_PBKDF2 = 1000;
-const TAMANHO_SAL = 16 / 8;
+const TAMANHO_SAL = 16;
 const TAMANHO_VERIFICACAO = 2;
+const TAMANHO_AUTENTICACAO = 10;
 
 const MAGIC_AES_PROPRIO = Buffer.from('SBACAES1', 'ascii');
 
@@ -35,11 +36,33 @@ function senhaDeAmbiente({ obrigatoria = true } = {}) {
 }
 
 function derivarChaves(senha, sal, tamanhoChave, tamanhoVerificacao) {
-  const material = crypto.pbkdf2Sync(senha.normalize('utf8'), sal, ITERACOES_PBKDF2, tamanhoChave + tamanhoVerificacao, 'sha1');
+  const material = crypto.pbkdf2Sync(senha.normalize('NFC'), sal, ITERACOES_PBKDF2, tamanhoChave * 2 + tamanhoVerificacao, 'sha1');
   return {
     chaveCifra: material.subarray(0, tamanhoChave),
-    chaveVerificacao: material.subarray(tamanhoChave)
+    chaveAutenticacao: material.subarray(tamanhoChave, tamanhoChave * 2),
+    chaveVerificacao: material.subarray(tamanhoChave * 2)
   };
+}
+
+function aesCtrWinZip(data, key) {
+  const cipher = crypto.createCipheriv('aes-256-ecb', key, null);
+  cipher.setAutoPadding(false);
+  const output = Buffer.alloc(data.length);
+  let counter = 1;
+  for (let offset = 0; offset < data.length; offset += 16, counter += 1) {
+    const block = Buffer.alloc(16);
+    block.writeUInt32LE(counter, 0);
+    const stream = cipher.update(block);
+    const length = Math.min(16, data.length - offset);
+    for (let i = 0; i < length; i += 1) output[offset + i] = data[offset + i] ^ stream[i];
+  }
+  cipher.final();
+  return output;
+}
+
+function aesExtraField(realMethod) {
+  const payload = Buffer.concat([paraInteiro16(2), Buffer.from('AE', 'ascii'), Buffer.from([3]), paraInteiro16(realMethod)]);
+  return Buffer.concat([paraInteiro16(0x9901), paraInteiro16(payload.length), payload]);
 }
 
 function inverter32(valor) {
@@ -83,7 +106,7 @@ function dataDos(dos) {
 
 /**
  * Cria um ZIP protegido por senha com um unico arquivo (deflate + AES-256).
- * O 7-Zip e' usado quando configurado/presente; caso contrario esta implementacao nativa.
+ * A implementação nativa gera WinZip AES e não depende de ferramenta externa.
  */
 async function compactarProtegido(origem, destino, opcoes = {}) {
   const senha = senhaDeAmbiente();
@@ -91,98 +114,67 @@ async function compactarProtegido(origem, destino, opcoes = {}) {
   const compactado = zlib.deflateRawSync(conteudo, { level: 6 });
   const usarDeflate = compactado.length < conteudo.length;
   const dados = usarDeflate ? compactado : conteudo;
-  const metodo = usarDeflate ? METODO_DEFLATE : METODO_STORED;
+  const metodoReal = usarDeflate ? METODO_DEFLATE : METODO_STORED;
   const crc = crc32De(conteudo);
-
   const sal = crypto.randomBytes(TAMANHO_SAL);
-  const { chaveCifra, chaveVerificacao } = derivarChaves(senha, sal, 32, TAMANHO_VERIFICACAO);
-  const nonce = crypto.randomBytes(16);
-  const cifra = crypto.createCipheriv('aes-256-ctr', chaveCifra, nonce);
-  const textoCifrado = Buffer.concat([cifra.update(dados), cifra.final()]);
-  const codigoAutenticacao = crypto.createHmac('sha1', chaveVerificacao).update(textoCifrado).digest();
-
-  const cabecalhoExtra = Buffer.concat([
-    sal,
-    paraInteiro16(TAMANHO_VERIFICACAO),
-    codigoAutenticacao,
-    Buffer.from([VERSAO_AES, FORTE_AES, metodo]),
-    crypto.createHash('sha1').update(conteudo).digest(),
-    Buffer.concat([nonce, Buffer.from([0, 0, 0, 0])])
-  ]);
-
+  const { chaveCifra, chaveAutenticacao, chaveVerificacao } = derivarChaves(senha, sal, 32, TAMANHO_VERIFICACAO);
+  const textoCifrado = aesCtrWinZip(dados, chaveCifra);
+  const codigoAutenticacao = crypto.createHmac('sha1', chaveAutenticacao).update(textoCifrado).digest().subarray(0, TAMANHO_AUTENTICACAO);
+  const pacoteCifrado = Buffer.concat([sal, chaveVerificacao, textoCifrado, codigoAutenticacao]);
+  const extra = aesExtraField(metodoReal);
   const nome = Buffer.from(path.basename(origem), 'utf8');
-  const { hora, minuto, segundo } = dataDos(Date.now());
-  const deslocamentoExtra = 30 + nome.length;
-  const crcNome = crc32De(nome);
+  const now = new Date();
+  const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | Math.floor(now.getSeconds() / 2);
+  const dosDate = ((Math.max(1980, now.getFullYear()) - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+  const flags = 0x0801;
 
-  const cabecalhoLocal = Buffer.alloc(30);
-  cabecalhoLocal.writeUInt32LE(ASSINATURA_LOCAL.readUInt32LE(0), 0);
-  cabecalhoLocal.writeUInt16LE(FORTE_AES, 4);
-  cabecalhoLocal.writeUInt16LE(VERSAO_AES, 6);
-  cabecalhoLocal.writeUInt16LE(FORTE_AES, 8);
-  cabecalhoLocal.writeUInt16LE(metodo, 10);
-  cabecalhoLocal.writeUInt16LE(hora, 12);
-  cabecalhoLocal.writeUInt16LE(minuto, 14);
-  cabecalhoLocal.writeUInt16LE(segundo, 16);
-  cabecalhoLocal.writeUInt32LE(crc, 18);
-  cabecalhoLocal.writeUInt32LE(textoCifrado.length, 22);
-  cabecalhoLocal.writeUInt32LE(conteudo.length, 26);
-  cabecalhoLocal.writeUInt16LE(nome.length, 28);
+  const localHeader = Buffer.alloc(30);
+  localHeader.writeUInt32LE(ASSINATURA_LOCAL.readUInt32LE(0), 0);
+  localHeader.writeUInt16LE(VERSAO_AES, 4);
+  localHeader.writeUInt16LE(flags, 6);
+  localHeader.writeUInt16LE(METODO_AES, 8);
+  localHeader.writeUInt16LE(dosTime, 10);
+  localHeader.writeUInt16LE(dosDate, 12);
+  localHeader.writeUInt32LE(0, 14); // AE-2 stores no CRC; HMAC authenticates the encrypted payload.
+  localHeader.writeUInt32LE(pacoteCifrado.length, 18);
+  localHeader.writeUInt32LE(conteudo.length, 22);
+  localHeader.writeUInt16LE(nome.length, 26);
+  localHeader.writeUInt16LE(extra.length, 28);
 
-  const cabecalhoCentral = Buffer.alloc(46);
-  cabecalhoCentral.writeUInt32LE(ASSINATURA_CENTRAL.readUInt32LE(0), 0);
-  cabecalhoCentral.writeUInt16LE(FORTE_AES, 4);
-  cabecalhoCentral.writeUInt16LE(VERSAO_AES, 6);
-  cabecalhoCentral.writeUInt16LE(FORTE_AES, 8);
-  cabecalhoCentral.writeUInt16LE(metodo, 10);
-  cabecalhoCentral.writeUInt16LE(hora, 12);
-  cabecalhoCentral.writeUInt16LE(minuto, 14);
-  cabecalhoCentral.writeUInt16LE(segundo, 16);
-  cabecalhoCentral.writeUInt32LE(crc, 18);
-  cabecalhoCentral.writeUInt32LE(textoCifrado.length, 22);
-  cabecalhoCentral.writeUInt32LE(conteudo.length, 26);
-  cabecalhoCentral.writeUInt16LE(nome.length, 28);
-  cabecalhoCentral.writeUInt16LE(TAMANHO_SAL, 30);
-  cabecalhoCentral.writeUInt16LE(TAMANHO_VERIFICACAO, 32);
-  cabecalhoCentral.writeUInt32LE(0, 38);
-  cabecalhoCentral.writeUInt32LE(0, 42);
-  cabecalhoCentral.writeUInt16LE(crcNome, 20);
-  cabecalhoCentral.writeUInt16LE(0, 34);
-  cabecalhoCentral.writeUInt16LE(0, 36);
-  cabecalhoCentral.writeUInt16LE(0, 40);
+  const centralHeader = Buffer.alloc(46);
+  centralHeader.writeUInt32LE(ASSINATURA_CENTRAL.readUInt32LE(0), 0);
+  centralHeader.writeUInt16LE(0x031e, 4); // Unix creator, ZIP 3.0.
+  centralHeader.writeUInt16LE(VERSAO_AES, 6);
+  centralHeader.writeUInt16LE(flags, 8);
+  centralHeader.writeUInt16LE(METODO_AES, 10);
+  centralHeader.writeUInt16LE(dosTime, 12);
+  centralHeader.writeUInt16LE(dosDate, 14);
+  centralHeader.writeUInt32LE(0, 16);
+  centralHeader.writeUInt32LE(pacoteCifrado.length, 20);
+  centralHeader.writeUInt32LE(conteudo.length, 24);
+  centralHeader.writeUInt16LE(nome.length, 28);
+  centralHeader.writeUInt16LE(extra.length, 30);
+  centralHeader.writeUInt16LE(0, 32);
+  centralHeader.writeUInt16LE(0, 34);
+  centralHeader.writeUInt16LE(0, 36);
+  centralHeader.writeUInt32LE(0, 38);
+  centralHeader.writeUInt32LE(0, 42);
 
-  const inicioCentral = 30 + nome.length + cabecalhoExtra.length + textoCifrado.length;
-  const registroCentral = Buffer.concat([
-    cabecalhoCentral,
-    nome,
-    Buffer.concat([sal, paraInteiro16(TAMANHO_VERIFICACAO), codigoAutenticacao, Buffer.from([VERSAO_AES, FORTE_AES, metodo])]),
-    crypto.createHash('sha1').update(conteudo).digest()
-  ]);
-  const registroCentralCompleto = Buffer.concat([
-    Buffer.from(registroCentral.subarray(0, 38)),
-    paraInteiro32(inverter32(inicioCentral)),
-    Buffer.from(registroCentral.subarray(42, 46))
-  ]);
-
-  const fim = Buffer.alloc(22);
-  fim.writeUInt32LE(EOCD.readUInt32LE(0), 0);
-  fim.writeUInt16LE(1, 8);
-  fim.writeUInt16LE(1, 10);
-  fim.writeUInt32LE(registroCentralCompleto.length, 12);
-  fim.writeUInt32LE(inicioCentral, 16);
+  const local = Buffer.concat([localHeader, nome, extra, pacoteCifrado]);
+  const offsetCentral = local.length;
+  const central = Buffer.concat([centralHeader, nome, extra]);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(EOCD.readUInt32LE(0), 0);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(central.length, 12);
+  end.writeUInt32LE(offsetCentral, 16);
 
   await fsp.mkdir(path.dirname(destino), { recursive: true });
-  await fsp.writeFile(destino, Buffer.concat([cabecalhoLocal, nome, cabecalhoExtra, textoCifrado, registroCentralCompleto, fim]));
+  await fsp.writeFile(destino, Buffer.concat([local, central, end]));
   opcoes.onProgress?.({ etapa: 'finalizada', bytes: conteudo.length, total: conteudo.length });
-  return {
-    caminho: destino,
-    senhaProtegida: true,
-    algoritmo: 'AES-256 (WinZip AE-2)',
-    tamanhoOriginal: conteudo.length,
-    tamanhoFinal: (await fsp.stat(destino)).size
-  };
+  return { caminho: destino, senhaProtegida: true, algoritmo: 'AES-256 (WinZip AE-2)', tamanhoOriginal: conteudo.length, tamanhoFinal: (await fsp.stat(destino)).size };
 }
-
 function paraInteiro32(valor) {
   const buffer = Buffer.alloc(4);
   buffer.writeUInt32LE(valor >>> 0);
@@ -250,67 +242,63 @@ async function lerEntradas(arquivo) {
 }
 
 function lerBlocosAes(extra) {
-  const tamanhoSal = extra.readUInt16LE(4);
-  const tamanhoVerificacao = extra.readUInt16LE(6);
-  const versao = extra[8];
-  const forca = extra[9];
-  if (tamanhoVerificacao !== TAMANHO_VERIFICACAO) {
-    throw new Error(`ZIP protegido com metodo de autenticacao nao suportado (${tamanhoVerificacao * 8} bits).`);
+  let cursor = 0;
+  while (cursor + 4 <= extra.length) {
+    const id = extra.readUInt16LE(cursor);
+    const size = extra.readUInt16LE(cursor + 2);
+    const data = cursor + 4;
+    if (data + size > extra.length) throw new Error('ZIP invalido: campo extra truncado.');
+    if (id === 0x9901) {
+      if (size !== 7) throw new Error('Campo WinZip AES invalido.');
+      const vendorVersion = extra.readUInt16LE(data);
+      const vendor = extra.subarray(data + 2, data + 4).toString('ascii');
+      const strength = extra[data + 4];
+      if (vendor !== 'AE' || vendorVersion !== 2 || strength !== 3) throw new Error('Formato WinZip AES nao suportado.');
+      return { metodoReal: extra.readUInt16LE(data + 5), tamanhoSal: 16, inicioDados: 0 };
+    }
+    cursor = data + size;
   }
-  return {
-    sal: extra.subarray(10, 10 + tamanhoSal),
-    versao,
-    forca,
-    inicioDados: 10 + tamanhoSal + tamanhoVerificacao,
-    metodoReal: extra[10 + tamanhoSal + tamanhoVerificacao]
-  };
+  throw new Error('ZIP AES sem campo de parametros WinZip AES.');
 }
 
-/** Le a entrada e devolve o conteudo descriptografado ou descompactado. */
 async function lerEntrada(arquivo, entrada, senha) {
   const handle = await fsp.open(arquivo, 'r');
   try {
-    const cabecalhoLocal = Buffer.alloc(30);
-    await handle.read(cabecalhoLocal, 0, 30, entrada.deslocamentoLocal);
-    const tamanhoNome = cabecalhoLocal.readUInt16LE(26);
-    const tamanhoExtra = cabecalhoLocal.readUInt16LE(28);
-    const inicioDados = entrada.deslocamentoLocal + 30 + tamanhoNome + tamanhoExtra;
+    const localHeader = Buffer.alloc(30);
+    await handle.read(localHeader, 0, localHeader.length, entrada.deslocamentoLocal);
+    if (localHeader.readUInt32LE(0) !== ASSINATURA_LOCAL.readUInt32LE(0)) throw new Error('Cabecalho local ZIP invalido.');
+    const nameLength = localHeader.readUInt16LE(26);
+    const extraLength = localHeader.readUInt16LE(28);
+    const dataOffset = entrada.deslocamentoLocal + 30 + nameLength + extraLength;
+    const packed = Buffer.alloc(entrada.tamanhoComprimido);
+    await handle.read(packed, 0, packed.length, dataOffset);
 
     let dados;
     if (entrada.metodo === METODO_AES) {
-      const blocos = lerBlocosAes(entrada.extra);
-      const verificador = entrada.extra.subarray(10 + blocos.sal.length, 10 + blocos.sal.length + TAMANHO_VERIFICACAO);
-      const { chaveCifra, chaveVerificacao } = derivarChaves(senha, blocos.sal, 32, TAMANHO_VERIFICACAO);
-      if (crypto.createHmac('sha1', chaveVerificacao).update(verificador).digest().compare(verificador) !== 0) {
-        throw new Error('Senha do ZIP incorreta.');
-      }
-      const nonce = entrada.extra.subarray(blocos.inicioDados + 4, blocos.inicioDados + 12);
-      const buffer = Buffer.alloc(entrada.tamanhoComprimido);
-      await handle.read(buffer, 0, entrada.tamanhoComprimido, inicioDados);
-      const decipher = crypto.createDecipheriv('aes-256-ctr', chaveCifra, nonce);
-      dados = Buffer.concat([decipher.update(buffer), decipher.final()]);
-      const metodoReal = blocos.metodoReal;
-      if (metodoReal === METODO_DEFLATE) dados = zlib.inflateRawSync(dados);
-      else if (metodoReal !== METODO_STORED) throw new Error(`Metodo de compactacao ZIP nao suportado (${metodoReal}).`);
-    } else {
-      const buffer = Buffer.alloc(entrada.tamanhoComprimido);
-      await handle.read(buffer, 0, entrada.tamanhoComprimido, inicioDados);
-      if (entrada.metodo === METODO_DEFLATE) dados = zlib.inflateRawSync(buffer);
-      else if (entrada.metodo === METODO_STORED) dados = buffer;
-      else throw new Error(`Metodo de compactacao ZIP nao suportado (${entrada.metodo}).`);
-    }
+      const aes = lerBlocosAes(entrada.extra);
+      if (packed.length < aes.tamanhoSal + TAMANHO_VERIFICACAO + TAMANHO_AUTENTICACAO) throw new Error('Entrada WinZip AES truncada.');
+      const salt = packed.subarray(0, aes.tamanhoSal);
+      const verifier = packed.subarray(aes.tamanhoSal, aes.tamanhoSal + TAMANHO_VERIFICACAO);
+      const cipherEnd = packed.length - TAMANHO_AUTENTICACAO;
+      const ciphertext = packed.subarray(aes.tamanhoSal + TAMANHO_VERIFICACAO, cipherEnd);
+      const authCode = packed.subarray(cipherEnd);
+      const keys = derivarChaves(senha ?? senhaDeAmbiente(), salt, 32, TAMANHO_VERIFICACAO);
+      if (!crypto.timingSafeEqual(keys.chaveVerificacao, verifier)) throw new Error('Senha do ZIP incorreta.');
+      const expectedAuth = crypto.createHmac('sha1', keys.chaveAutenticacao).update(ciphertext).digest().subarray(0, TAMANHO_AUTENTICACAO);
+      if (!crypto.timingSafeEqual(expectedAuth, authCode)) throw new Error('Autenticacao WinZip AES invalida: arquivo corrompido.');
+      const compressed = aesCtrWinZip(ciphertext, keys.chaveCifra);
+      if (aes.metodoReal === METODO_DEFLATE) dados = zlib.inflateRawSync(compressed);
+      else if (aes.metodoReal === METODO_STORED) dados = compressed;
+      else throw new Error(`Metodo de compactacao ZIP nao suportado (${aes.metodoReal}).`);
+    } else if (entrada.metodo === METODO_DEFLATE) dados = zlib.inflateRawSync(packed);
+    else if (entrada.metodo === METODO_STORED) dados = packed;
+    else throw new Error(`Metodo ZIP nao suportado (${entrada.metodo}).`);
 
-    if (dados.length !== entrada.tamanhoOriginal) {
-      throw new Error('Conteudo descompactado com tamanho inesperado (arquivo corrompido).');
-    }
-    const crc = crc32De(dados);
-    if (entrada.crc && crc !== entrada.crc) throw new Error('CRC32 divergente: conteudo corrompido.');
+    if (dados.length !== entrada.tamanhoOriginal) throw new Error('Conteudo descompactado com tamanho inesperado (arquivo corrompido).');
+    if (entrada.metodo !== METODO_AES && entrada.crc && crc32De(dados) !== entrada.crc) throw new Error('CRC32 divergente: conteudo corrompido.');
     return dados;
-  } finally {
-    await handle.close();
-  }
+  } finally { await handle.close(); }
 }
-
 /**
  * Extrai de um backup compactado: aceita ZIP protegido por senha e o container .aes do projeto.
  * Devolve o caminho do arquivo .dump utilizavel pelo pg_restore.
@@ -322,9 +310,12 @@ async function prepararParaRestauracao(arquivo, destino, senhaInformada, opcoes 
     opcoes.onProgress?.({ etapa: 'extraindo', percentual: 20, mensagem: 'Extraindo ZIP protegido por senha.' });
     const entradas = await lerEntradas(arquivo);
     if (!entradas.length) throw new Error('ZIP vazio.');
+    if (entradas.length !== 1 || entradas[0].nome.endsWith('/')) throw new Error('O backup ZIP deve conter exatamente um arquivo.');
     const conteudo = await lerEntrada(arquivo, entradas[0], senhaInformada ?? senhaDeAmbiente());
-    await fsp.writeFile(alvo, conteudo);
-    return { arquivo: alvo, conteudo, origem: 'zip-protegido' };
+    const extraido = path.join(destino, path.basename(entradas[0].nome));
+    await fsp.writeFile(extraido, conteudo, { flag: 'wx' });
+    if (/\.aes$/i.test(extraido)) return prepararParaRestauracao(extraido, destino, senhaInformada, opcoes);
+    return { arquivo: extraido, conteudo, origem: 'zip-protegido' };
   }
   if (/\.aes$/i.test(nome)) {
     opcoes.onProgress?.({ etapa: 'descriptografando', percentual: 20, mensagem: 'Descriptografando container AES.' });

@@ -1,9 +1,11 @@
 const fs = require('fs/promises');
 const path = require('path');
+const os = require('os');
 const { spawn } = require('child_process');
 const { Client } = require('pg');
 const { pool } = require('../database/pool');
 const { caminhoFerramenta, argumentosConexao, ambienteFilho } = require('../services/postgres-tools');
+const zip = require('../services/zip.service');
 
 const TABLES = [
   'clientes', 'especies', 'lotes', 'produtos_acessorios', 'pedidos',
@@ -54,37 +56,56 @@ async function counts(client) {
   return result;
 }
 
+async function digests(client) {
+  const result = {};
+  for (const table of BUSINESS_TABLES) {
+    const { rows } = await client.query(
+      `SELECT md5(COALESCE(string_agg(row_hash, '' ORDER BY row_id), '')) AS digest
+         FROM (SELECT t.id AS row_id, md5(to_jsonb(t)::text) AS row_hash FROM public."${table}" AS t) AS hashed_rows`
+    );
+    result[table] = rows[0].digest;
+  }
+  return result;
+}
+
 async function main() {
   const [, , suppliedFile, target] = process.argv;
   if (!suppliedFile || !target || !/^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(target)) {
-    throw new Error('Uso: npm run restore -- <arquivo.dump> <novo_banco_de_validacao>');
+    throw new Error('Uso: npm run restore -- <arquivo.dump|.aes|.zip> <novo_banco_de_validacao>');
   }
   if (target === process.env.DB_NAME) throw new Error('O banco configurado para a aplicacao nao pode ser substituido por este comando.');
   const file = ensureAllowedFile(suppliedFile);
   const stat = await fs.stat(file);
   if (!stat.isFile()) throw new Error('O caminho informado nao e um arquivo.');
-  if (!file.toLowerCase().endsWith('.dump')) throw new Error('Este comando restaura arquivos .dump em formato custom do pg_dump.');
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'sbac-restore-'));
+  let dumpFile = file;
+  try {
+    if (file.toLowerCase().endsWith('.zip') || file.toLowerCase().endsWith('.aes')) {
+      dumpFile = (await zip.prepararParaRestauracao(file, workspace)).arquivo;
+    }
+    if (!dumpFile.toLowerCase().endsWith('.dump')) throw new Error('O arquivo precisa conter um dump custom do pg_dump.');
 
   const source = new Client(connectionConfig(process.env.DB_NAME));
-  let sourceCounts;
+  let sourceCounts; let sourceDigests;
   try {
     await source.connect();
     sourceCounts = await counts(source);
+    sourceDigests = await digests(source);
     const exists = await source.query('SELECT 1 FROM pg_database WHERE datname = $1', [target]);
     if (exists.rowCount) throw new Error(`O banco ${target} ja existe; escolha um nome novo para evitar sobrescrever dados.`);
     await source.query(`CREATE DATABASE "${target}" TEMPLATE template0 ENCODING 'UTF8'`);
   } finally { await source.end().catch(() => {}); }
 
   const executable = caminhoFerramenta('pg_restore');
-  const args = ['--exit-on-error', '--single-transaction', '--no-owner', '--no-acl', '--dbname', target, file];
+  const args = ['--exit-on-error', '--single-transaction', '--no-owner', '--no-acl', '--dbname', target, dumpFile];
   args.push(...argumentosConexao());
   await run(executable, args, { env: ambienteFilho() });
 
   const restored = new Client(connectionConfig(target));
-  let restoredCounts;
-  try { await restored.connect(); restoredCounts = await counts(restored); }
+  let restoredCounts; let restoredDigests;
+  try { await restored.connect(); restoredCounts = await counts(restored); restoredDigests = await digests(restored); }
   finally { await restored.end().catch(() => {}); }
-  const differences = BUSINESS_TABLES.filter((table) => sourceCounts[table] !== restoredCounts[table]);
+  const differences = BUSINESS_TABLES.filter((table) => sourceCounts[table] !== restoredCounts[table] || sourceDigests[table] !== restoredDigests[table]);
   const controlTablesAhead = TABLES.filter((table) => !BUSINESS_TABLES.includes(table) && restoredCounts[table] > sourceCounts[table]);
   if (differences.length || controlTablesAhead.length) {
     throw new Error(`Restauracao concluida, mas ha divergencia: dados de negocio [${differences.join(', ')}], controles [${controlTablesAhead.join(', ')}]. Banco mantido para analise.`);
@@ -92,10 +113,14 @@ async function main() {
   console.log(JSON.stringify({
     status: 'validado', arquivo: file, banco_restaurado: target,
     contagens_negocio_iguais: BUSINESS_TABLES.reduce((result, table) => { result[table] = restoredCounts[table]; return result; }, {}),
+    resumos_md5_negocio_iguais: BUSINESS_TABLES.reduce((result, table) => { result[table] = sourceDigests[table] === restoredDigests[table]; return result; }, {}),
     contagens_controle_origem: { configuracoes_backup: sourceCounts.configuracoes_backup, execucoes: sourceCounts.execucoes, logs_execucao: sourceCounts.logs_execucao },
     contagens_controle_restaurado: { configuracoes_backup: restoredCounts.configuracoes_backup, execucoes: restoredCounts.execucoes, logs_execucao: restoredCounts.logs_execucao },
     nota: 'Metadados e logs de controle podem mudar depois do instante em que o dump foi capturado.'
   }, null, 2));
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
 }
 
 main().catch((error) => {

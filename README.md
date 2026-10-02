@@ -29,7 +29,7 @@ O backend expõe um endpoint de saúde (`GET /api/health`) que testa a conexão 
 - **dotenv** — carrega credenciais do arquivo `.env`
 - **PostgreSQL** >= 15 (local: v18)
 - **Frontend** — SPA em JavaScript puro (sem framework), consumindo a API via `fetch` e SSE (`EventSource`)
-- **7-Zip** — compactação ZIP com criptografia AES-256 no motor de backup (opcional)
+- ZIP WinZip AES implementado no backend, sem dependência do 7-Zip
 
 ---
 
@@ -244,7 +244,7 @@ Express (index.js)
    ├── /api/execucoes               → execucoes.js → backup-execution.service (assíncrono)
    │                                    ├── pg_dump → arquivo .dump
    │                                    ├── criptografia AES-256-GCM (opcional)
-   │                                    ├── compactação ZIP AES via 7-Zip (opcional)
+   │                                    ├── compactação ZIP WinZip AES (opcional)
    │                                    ├── retenção (qtd_manter) e cópia adicional
    │                                    └── grava etapas/status em logs_execucao e execucoes
    ├── /api/execucoes/:id/eventos   → execution-events → eventos SSE ao navegador
@@ -282,7 +282,6 @@ Equivalente ao indicador de "Sistema operacional" do protótipo: confere se o ba
 | `DB_SSL`                    | não         | `false`      | Habilita SSL (servidores remotos)           |
 | `BACKUP_ALLOWED_ROOTS`      | sim**       | —            | Caminhos autorizados para gravar backups (separados por `;`) |
 | `PG_DUMP_PATH`              | não         | `pg_dump`    | Caminho do executável `pg_dump`            |
-| `SEVEN_ZIP_PATH`            | não         | `7z`         | Caminho do executável do 7-Zip             |
 | `ZIP_PASSWORD`              | não**       | —            | Senha do ZIP quando `compactacao` estiver ativa |
 | `BACKUP_ENCRYPTION_KEY`     | não**       | —            | Chave AES-256 (32 bytes) em base64, usada na criptografia |
 
@@ -321,9 +320,9 @@ Exemplo:
 ```
 
 `destino` e `caminho_copia_adicional` devem ser caminhos absolutos dentro de
-`BACKUP_ALLOWED_ROOTS`. Para executar backup real, configure `PG_DUMP_PATH`; para
-ZIP AES protegido, instale/configure o 7-Zip em `SEVEN_ZIP_PATH` e defina
-`ZIP_PASSWORD`. A opção de criptografia requer `BACKUP_ENCRYPTION_KEY`, uma chave
+`BACKUP_ALLOWED_ROOTS`. Para executar backup real, configure `PG_DUMP_PATH` e
+`PG_RESTORE_PATH`. ZIP AES protegido requer `ZIP_PASSWORD`. A opção de
+criptografia requer `BACKUP_ENCRYPTION_KEY`, uma chave
 AES-256 de 32 bytes codificada em base64.
 
 Em bancos existentes, execute uma vez `database/migrations/001_execucoes_validacoes.sql`
@@ -344,8 +343,7 @@ servida pelo próprio Express em `app.use(express.static(.../frontend))`. Ao abr
 | -------------- | -------------------------------------------------------- |
 | `index.html`   | Página única: contêiner `#app` e carregamento do módulo  |
 | `src/app.js`   | SPA: shell com sidebar, rotas por hash e telas           |
-| `src/api.js`   | Camada de comunicação com o backend (`fetch` + SSE) e mocks |
-| `src/mocks.js` | Dados de exemplo (histórico, logs, configuração)         |
+| `src/api.js`   | Camada de comunicação real com o backend (`fetch` + SSE) |
 | `styles.css`   | Estilos da interface                                     |
 
 ### Rotas da SPA (hash)
@@ -361,7 +359,7 @@ A troca de tela é feita pelo evento `hashchange`, sem recarregar a página.
 | Iniciar backup manual            | `POST /api/execucoes` (`fetch`)                    |
 | Consultar status e logs          | `GET /api/execucoes/:id` (`fetch`)                 |
 | Progresso em tempo real          | `GET /api/execucoes/:id/eventos` (SSE via `EventSource`) |
-| Histórico, logs e configurações  | dados `mock` (ainda não conectados a endpoints)    |
+| Histórico, logs e configurações  | endpoints ligados ao PostgreSQL                    |
 
 Na tela **Nova Execução**: o usuário preenche o formulário → `POST /api/execucoes`
 recebe `202` com o id da execução → a SPA abre um `EventSource` em `/eventos` e
@@ -372,9 +370,9 @@ SSE falhe.
 O "Sistema operacional" do cabeçalho usa `getHealth()`; com o banco offline, a SPA
 mostra o indicador em vermelho como "Sistema indisponível".
 
-> **Estado atual:** as telas de Histórico, Logs e Configurações ainda usam dados de
-> `mocks.js` (em memória), para a UI funcionar sem backend. Conectar essas telas à
-> API é o próximo passo.
+O Histórico oferece filtros de status, banco e período. Logs consultam os registros
+persistidos no PostgreSQL. Configurações salvam os parâmetros reais. Histórico
+também permite restaurar um backup em banco novo e validar as contagens de negócio.
 
 ---
 
@@ -383,7 +381,7 @@ mostra o indicador em vermelho como "Sistema indisponível".
 ### Backend
 - **Motor de execução de backup** (`src/services/backup-execution.service.js`):
   gera `pg_dump` (formato custom), criptografa com AES-256-GCM, compacta em ZIP com
-  AES via 7-Zip, aplica retenção (`qtd_manter`), copia opcionalmente para um segundo
+  AES WinZip nativo, aplica retenção (`qtd_manter`), copia opcionalmente para um segundo
   destino e registra tudo em `configuracoes_backup`, `execucoes` e `logs_execucao`.
 - **Manutenção automática**: decide `NENHUMA` (< 30 dias), `VACUUM` (30–60 dias) ou
   `VACUUM_FULL_ANALYZE` (> 60 dias) com base no histórico — ou aceita
@@ -399,8 +397,8 @@ mostra o indicador em vermelho como "Sistema indisponível".
 
 ### Frontend
 - Nova SPA completa: Dashboard, Nova Execução, Histórico, Logs e Configurações.
-- Integração real com o backend em execuções (`POST`/`GET`/SSE) e em `/api/health`.
-- `src/api.js` centraliza a comunicação; `src/mocks.js` fornece dados de exemplo.
+- Integração real com execução, Histórico, Logs, Configurações, cenários de teste e
+  restauração validada pelo backend/PostgreSQL.
 
 ### Banco de dados
 - `schema.sql`: novas restrições (`qtd_manter > 0`; `data_fim >= data_inicio`;
@@ -410,7 +408,7 @@ mostra o indicador em vermelho como "Sistema indisponível".
 
 ### Configuração
 - Novas variáveis de ambiente do motor de backup (ver seção 8): `BACKUP_ALLOWED_ROOTS`,
-  `PG_DUMP_PATH`, `SEVEN_ZIP_PATH`, `ZIP_PASSWORD`, `BACKUP_ENCRYPTION_KEY`.
+  `PG_DUMP_PATH`, `PG_RESTORE_PATH`, `ZIP_PASSWORD`, `BACKUP_ENCRYPTION_KEY`.
 
 ## Restauracao e teste de integridade
 
@@ -421,6 +419,32 @@ cd backend
 npm run restore -- "C:\caminho\autorizado\backup-aquarismo_sdbc-...dump" aquarismo_sdbc_validacao
 ```
 
-O nome de destino deve ser novo e diferente de `DB_NAME`. O script cria o banco, executa `pg_restore --exit-on-error` e compara exatamente as quantidades das tabelas de negocio. As contagens das tabelas de controle sao informadas separadamente, pois o proprio backup registra novas etapas depois do instante do dump. Se houver falha, o banco criado e mantido para inspecao; o script nunca apaga ou substitui bancos existentes. O arquivo precisa estar dentro de uma raiz listada em `BACKUP_ALLOWED_ROOTS`. Esta verificacao cobre arquivos `.dump` sem criptografia/compactacao.
+O nome de destino deve ser novo e diferente de `DB_NAME`. O script cria o banco,
+executa `pg_restore --exit-on-error` e compara as quantidades e resumos MD5 das
+linhas nas tabelas de negócio.
+Aceita `.dump`, `.aes` e `.zip`, inclusive `.dump.aes.zip`. No frontend, abra
+Histórico e clique **Restaurar** em uma execução concluída; informe o nome de um
+banco novo. O arquivo precisa estar dentro de `BACKUP_ALLOWED_ROOTS`.
 
-Defina `PG_DUMP_PATH`, `PG_RESTORE_PATH`, `BACKUP_ALLOWED_ROOTS` e `BACKUP_DEFAULT_DESTINATION` em `backend/.env`. O caminho padrao precisa pertencer a uma raiz autorizada. Compactacao e criptografia sao opcionais e exigem suas ferramentas/chaves.
+Defina `PG_DUMP_PATH`, `PG_RESTORE_PATH`, `BACKUP_ALLOWED_ROOTS` e
+`BACKUP_DEFAULT_DESTINATION` em `backend/.env`. O caminho padrão precisa pertencer
+a uma raiz autorizada. ZIP e criptografia exigem `ZIP_PASSWORD` e
+`BACKUP_ENCRYPTION_KEY`, respectivamente.
+
+## Demonstração ponta a ponta pelo frontend
+
+1. Inicie o backend com `npm start` na pasta `backend` e abra `http://localhost:3000`.
+2. Em **Nova Execução**, selecione um cenário, clique **Preparar cenário** e confira
+   a data/ausência exibida. Deixe a manutenção automática e clique **Iniciar execução**.
+3. Repita para menos de 30 dias (NENHUMA), 30–60 (VACUUM), acima de 60
+   (VACUUM FULL ANALYZE) e sem histórico (VACUUM FULL ANALYZE).
+4. Para comprovar precedência manual, prepare acima de 60 dias, escolha VACUUM e
+   inicie a execução.
+5. Habilite **Criptografia** e **Compactação** para obter `.dump.aes.zip` protegido.
+6. Em Histórico, confira regra, decisão, datas e arquivo. Em Logs, consulte as etapas.
+7. Use **Restaurar** em uma execução concluída, informe um banco novo e confira o
+   resultado validado e as contagens íntegras.
+   8. Em Configurações, informe retenção e cópia adicional; a retenção é aplicada
+   aos dois destinos. Para demonstrar falha
+   controlada, marque essa opção em Nova Execução; Falha e Notificação são gravadas
+   no PostgreSQL sem iniciar manutenção ou gerar backup.

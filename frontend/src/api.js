@@ -7,7 +7,8 @@ const json = async (response) => {
 export const useExecucoes = {
   iniciar: (dados) => fetch('/api/execucoes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dados) }).then(json),
   obter: (id) => fetch(`/api/execucoes/${id}`).then(json),
-  listar: () => fetch('/api/execucoes').then(json),
+  restaurar: (id, banco_destino) => fetch(`/api/execucoes/${id}/restaurar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ banco_destino }) }).then(json),
+  listar: (filters = {}) => { const params = new URLSearchParams(Object.entries(filters).filter(([, v]) => v)); return fetch(`/api/execucoes${params.size ? `?${params}` : ''}`).then(json); },
   cenarioAtivo: () => fetch('/api/execucoes/cenarios-demonstracao/ativo').then(json),
   prepararCenario: (cenario) => fetch('/api/execucoes/cenarios-demonstracao', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cenario }) }).then(json),
   acompanhar(id, onProgress, onDone, onError) {

@@ -2,10 +2,11 @@ const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
 const { spawn } = require('child_process');
-const { pipeline } = require('stream/promises');
 const { pool } = require('../database/pool');
 const { publish } = require('./execution-events');
 const { caminhoFerramenta, argumentosConexao, ambienteFilho } = require('./postgres-tools');
+const criptografia = require('./criptografia.service');
+const zip = require('./zip.service');
 
 const MANUTENCOES = {
   none: 'NENHUMA',
@@ -69,6 +70,9 @@ function normalizeInput(body) {
       throw validationError(`${field} deve ser booleano.`);
     }
   }
+  if (body.simular_falha !== undefined && typeof body.simular_falha !== 'boolean') {
+    throw validationError('simular_falha deve ser booleano.');
+  }
   const explicit = body.manutencao_explicita;
   if (explicit !== undefined && !Object.hasOwn(MANUTENCOES, explicit)) {
     throw validationError('manutencao_explicita deve ser none, vacuum ou vacuum_full_analyze.');
@@ -81,6 +85,7 @@ function normalizeInput(body) {
       ? null : safeDirectory(body.caminho_copia_adicional, 'caminho_copia_adicional'),
     compactacao: body.compactacao === true,
     criptografia: body.criptografia === true,
+    simularFalha: body.simular_falha === true,
     manutencaoExplicita: explicit
   };
 }
@@ -166,27 +171,6 @@ function run(command, args, options = {}) {
   });
 }
 
-async function encryptFile(input) {
-  const encodedKey = process.env.BACKUP_ENCRYPTION_KEY || '';
-  const key = Buffer.from(encodedKey, 'base64');
-  if (key.length !== 32) throw new Error('BACKUP_ENCRYPTION_KEY deve conter uma chave AES-256 válida em base64.');
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const output = `${input}.aes`;
-  await pipeline(require('fs').createReadStream(input), cipher, require('fs').createWriteStream(output));
-  await fs.appendFile(output, Buffer.concat([Buffer.from('AQBK1', 'ascii'), iv, cipher.getAuthTag()]));
-  // O cabeçalho ao fim preserva IV e tag; o restaurador deve ler os últimos 33 bytes.
-  return output;
-}
-
-async function compactFile(input) {
-  const password = process.env.ZIP_PASSWORD;
-  if (!password) throw new Error('ZIP_PASSWORD é obrigatória quando compactacao estiver habilitada.');
-  const output = input.replace(/\.[^.]+$/, '') + '.zip';
-  await run(process.env.SEVEN_ZIP_PATH || '7z', ['a', '-tzip', '-mem=AES256', `-p${password}`, output, input]);
-  return output;
-}
-
 function pgDumpOptions(banco, output) {
   const args = ['--format=custom', '--file', output, '--dbname', banco, ...argumentosConexao()];
   // PGPASSWORD é passado somente ao processo filho, sem ser incluído nos argumentos ou logs.
@@ -218,6 +202,7 @@ async function execute(executionId, input) {
     }
     await fs.mkdir(input.destino, { recursive: true });
     if (input.caminhoCopia) await fs.mkdir(input.caminhoCopia, { recursive: true });
+    if (input.simularFalha) throw new Error('Falha controlada solicitada para validar o registro e a notificacao de erro.');
 
     const maintenance = await decideMaintenance(input.manutencaoExplicita, input.testScenario);
     await pool.query(
@@ -243,13 +228,15 @@ async function execute(executionId, input) {
 
     if (input.criptografia) {
       await log(executionId, 'criptografia', 'Criptografando backup com AES-256-GCM.');
-      const encrypted = await encryptFile(currentFile);
+      const encrypted = `${currentFile}.aes`;
+      await criptografia.criptografarArquivo(currentFile, encrypted);
       await fs.unlink(currentFile);
       currentFile = encrypted;
     }
     if (input.compactacao) {
       await log(executionId, 'compactacao', 'Compactando backup em ZIP protegido.');
-      const compacted = await compactFile(currentFile);
+      const compacted = `${currentFile}.zip`;
+      await zip.compactarProtegido(currentFile, compacted);
       await fs.unlink(currentFile);
       currentFile = compacted;
     }
@@ -257,7 +244,9 @@ async function execute(executionId, input) {
     await retainBackups(input.destino, input.banco, input.qtdManter, currentFile);
     if (input.caminhoCopia) {
       await log(executionId, 'copia_adicional', 'Copiando backup para o destino adicional.');
-      await fs.copyFile(currentFile, path.join(input.caminhoCopia, path.basename(currentFile)));
+      const copyFile = path.join(input.caminhoCopia, path.basename(currentFile));
+      await fs.copyFile(currentFile, copyFile);
+      await retainBackups(input.caminhoCopia, input.banco, input.qtdManter, copyFile);
     }
     const result = `Backup concluído: ${path.basename(currentFile)}`;
     await pool.query(`UPDATE execucoes SET status = 'sucesso', data_fim = now(), resultado = $1, caminho_arquivo_backup = $2 WHERE id = $3`, [result, currentFile, executionId]);
@@ -266,7 +255,13 @@ async function execute(executionId, input) {
   } catch (error) {
     const message = 'Execução interrompida por falha. Consulte os logs da execução.';
     await pool.query(`UPDATE execucoes SET status = 'falha', data_fim = now(), resultado = $1 WHERE id = $2`, [message, executionId]).catch(() => {});
-    await log(executionId, 'falha', message, error.message).catch(() => {});
+    const technical = JSON.stringify({ erro: redact(error.message), banco: input.banco, destino: input.destino,
+      caminho_copia_adicional: input.caminhoCopia, qtd_manter: input.qtdManter,
+      compactacao: input.compactacao, criptografia: input.criptografia,
+      etapa: input.simularFalha ? 'falha_controlada' : 'execucao' });
+    await log(executionId, 'falha', message, technical).catch(() => {});
+    await log(executionId, 'notificacao', `Notificacao por e-mail simulada para a execucao ${executionId}.`,
+      `Falha: ${redact(error.message)}; detalhes gravados em logs_execucao.`).catch(() => {});
     // Integração de e-mail fica concentrada aqui; não inclui segredos nem saída bruta.
     console.error(`Notificação simulada de falha da execução ${executionId}: ${redact(error.message)}`);
     publish(executionId, 'concluida', { status: 'falha', resultado: message });
@@ -333,14 +328,28 @@ async function getExecution(id, includeLogs = true) {
   return response;
 }
 
-async function listExecutions(limit = 100) {
+async function listExecutions(filters = {}) {
+  const limit = Math.min(500, Math.max(1, Number(filters.limit) || 200));
+  const params = [limit];
+  const where = [];
+  if (filters.status && ['sucesso', 'falha', 'em_andamento'].includes(filters.status)) {
+    params.push(filters.status); where.push(`e.status = $${params.length}`);
+  }
+  if (filters.banco && /^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(filters.banco)) {
+    params.push(filters.banco); where.push(`c.banco = $${params.length}`);
+  }
+  const days = Number(filters.dias);
+  if (Number.isInteger(days) && days > 0 && days <= 3650) {
+    params.push(days); where.push(`e.data_inicio >= now() - ($${params.length}::int * interval '1 day')`);
+  }
   const { rows } = await pool.query(
     `SELECT e.id, e.data_inicio, e.data_fim, e.decisao_manutencao, e.regra_aplicada, e.status, e.resultado,
             e.cenario_demonstracao_id, e.cenario_demonstracao, e.historico_manutencao_em,
             e.dias_desde_manutencao, e.manutencao_executada, e.caminho_arquivo_backup,
             c.banco, c.caminho_destino, c.qtd_manter, c.caminho_copia, c.criptografar, c.compactar
        FROM execucoes e JOIN configuracoes_backup c ON c.id = e.config_id
-      ORDER BY e.data_inicio DESC, e.id DESC LIMIT $1`, [limit]
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY e.data_inicio DESC, e.id DESC LIMIT $1`, params
   );
   return rows;
 }
@@ -391,4 +400,4 @@ async function saveBackupConfig(body) {
 }
 
 module.exports = { startExecution, getExecution, listExecutions, getBackupConfig, saveBackupConfig, maintenanceDecision,
-  prepareMaintenanceScenario, getPreparedMaintenanceScenario };
+  prepareMaintenanceScenario, getPreparedMaintenanceScenario, registrarEvento: log };
