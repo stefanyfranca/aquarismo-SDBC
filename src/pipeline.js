@@ -108,6 +108,7 @@ class Executor extends EventEmitter {
     this.inicio = new Date().toISOString();
     const p = this.params;
     const chaveConexao = `${this.sessao.host}:${this.sessao.porta}/${p.banco}`;
+    let eventoFim = { status: 'falha' };
 
     // Registro da execução no armazenamento local.
     this.execucaoId = db.inserirExecucao({
@@ -189,7 +190,7 @@ class Executor extends EventEmitter {
         resultado: `Backup concluído: ${this.arquivoAtual}`,
         arquivo_final: this.arquivoAtual,
       });
-      this.emit('fim', { status: 'sucesso' });
+      eventoFim = { status: 'sucesso' };
       this.log('info', 'geral', `Execução #${this.execucaoId} concluída com sucesso.`);
     } catch (e) {
       // Falha: preserva log, tenta apagar arquivo parcial, envia e-mail.
@@ -200,7 +201,7 @@ class Executor extends EventEmitter {
         etapa_falha: etapaFalha,
         resultado: this.falha?.erro || 'Falha desconhecida.',
       });
-      this.emit('fim', { status: 'falha', etapa: etapaFalha });
+      eventoFim = { status: 'falha', etapa: etapaFalha };
       this.log('erro', 'geral', `Execução #${this.execucaoId} FALHOU na etapa "${etapaFalha}".`);
 
       // Tenta apagar arquivo parcial.
@@ -224,6 +225,7 @@ class Executor extends EventEmitter {
       } catch (e) {
         this.log('aviso', 'geral', `Não foi possível enviar o e-mail: ${mascarar(e.message, this.segredos)}`);
       }
+      this.emit('fim', eventoFim);
     }
   }
 

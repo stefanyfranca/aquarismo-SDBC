@@ -366,20 +366,25 @@ router.get('/execucoes/:id/eventos', sessao.exigirSessao, (req, res) => {
 
   const aoEvento = (etapa) => res.write(`event: etapa\ndata: ${JSON.stringify(etapa)}\n\n`);
   const aoLog = (log) => res.write(`event: log\ndata: ${JSON.stringify(log)}\n\n`);
-  const aoFim = () => {
-    res.write(`event: fim\ndata: ${JSON.stringify({ status: ex.status })}\n\n`);
+  const limparListeners = () => {
+    executor.off('etapa', aoEvento);
+    executor.off('log', aoLog);
+    executor.off('fim', aoFim);
+    res.off('close', limparListeners);
+    res.off('finish', limparListeners);
+  };
+  const aoFim = (fim) => {
+    res.write(`event: fim\ndata: ${JSON.stringify(fim)}\n\n`);
     res.end();
+    limparListeners();
   };
 
   executor.on('etapa', aoEvento);
   executor.on('log', aoLog);
   executor.on('fim', aoFim);
 
-  req.on('close', () => {
-    executor.off('etapa', aoEvento);
-    executor.off('log', aoLog);
-    executor.off('fim', aoFim);
-  });
+  res.once('close', limparListeners);
+  res.once('finish', limparListeners);
 });
 
 /* ----------------------------- restauração ----------------------------- */
