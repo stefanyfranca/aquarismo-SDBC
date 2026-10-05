@@ -2,10 +2,10 @@
   "name": "sbac",
   "version": "1.0.0",
   "description": "SBAC – Sistema de Backup Aquarismo Charrua — Plataforma de gerenciamento de backup e manutenção de PostgreSQL",
-  "main": "server.js",
+  "main": "backend/server.js",
   "scripts": {
-    "start": "node server.js",
-    "test": "node --test tests/"
+    "start": "node backend/server.js",
+    "test": "node --test backend/tests/*.test.js"
   },
   "engines": {
     "node": ">=22.0.0"

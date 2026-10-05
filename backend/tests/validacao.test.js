@@ -3,7 +3,7 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const v = require('../src/validacao');
+const v = require('../src/lib/validacao');
 
 test('Nomes de banco válidos', () => {
   assert.equal(v.validarBanco('aquarismo'), null);

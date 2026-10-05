@@ -21,11 +21,11 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const db = require('./db');
-const { mascarar } = require('./mascara');
-const v = require('./validacao');
-const pgtools = require('./pgtools');
-const conexao = require('./conexao');
+const db = require('../lib/db');
+const { mascarar } = require('../lib/mascara');
+const v = require('../lib/validacao');
+const pgtools = require('../lib/pgtools');
+const conexao = require('../lib/conexao');
 const retencao = require('./retencao');
 const cripto = require('./criptografia');
 const email = require('./email');
@@ -36,6 +36,18 @@ const ETAPAS = [
 ];
 
 const ETAPAS_BLOQUEANTES = new Set(['VACUUM_FULL_ANALYZE']);
+
+// Formato ZIP com criptografia WinZip AES (AE-2). O plugin é registrado como
+// um "format" do archiver; usá-lo via archiver.create('zip', {...}) geraria um
+// ZIP comum, ignorando `password`/`encryptionMethod` (sem senha ao extrair).
+const FORMATO_ZIP_AES = 'zip-encrypted';
+let formatoZipAesRegistrado = false;
+function registrarFormatoZipAes() {
+  if (formatoZipAesRegistrado) return;
+  const archiver = require('archiver');
+  archiver.registerFormat(FORMATO_ZIP_AES, require('archiver-zip-encrypted'));
+  formatoZipAesRegistrado = true;
+}
 
 class Executor extends EventEmitter {
   /**
@@ -52,6 +64,7 @@ class Executor extends EventEmitter {
     this.execucaoId = null;
     this.etapaAtual = null;
     this.arquivoAtual = null;   // arquivo em produção (dump → enc → zip)
+    this.nomeBase = null;       // nome do backup sem extensão (usado pelo ZIP final)
     this.temporarios = [];      // arquivos a remover ao final
     this.inicio = null;
     this.falha = null;
@@ -189,8 +202,8 @@ class Executor extends EventEmitter {
         resultado: `Backup concluído: ${this.arquivoAtual}`,
         arquivo_final: this.arquivoAtual,
       });
-      this.emit('fim', { status: 'sucesso' });
       this.log('info', 'geral', `Execução #${this.execucaoId} concluída com sucesso.`);
+      this.emit('fim', { status: 'sucesso' });
     } catch (e) {
       // Falha: preserva log, tenta apagar arquivo parcial, envia e-mail.
       const etapaFalha = this.falha?.etapa || 'desconhecida';
@@ -200,8 +213,8 @@ class Executor extends EventEmitter {
         etapa_falha: etapaFalha,
         resultado: this.falha?.erro || 'Falha desconhecida.',
       });
-      this.emit('fim', { status: 'falha', etapa: etapaFalha });
       this.log('erro', 'geral', `Execução #${this.execucaoId} FALHOU na etapa "${etapaFalha}".`);
+      this.emit('fim', { status: 'falha', etapa: etapaFalha });
 
       // Tenta apagar arquivo parcial.
       if (this.arquivoAtual) {
@@ -343,7 +356,10 @@ class Executor extends EventEmitter {
     }
 
     const ts = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
-    const nomeArquivo = `backup-${p.banco}-${ts}.dump`;
+    // Base sem extensão: o ZIP final usa esta base + ".zip" (evita ".dump.zip",
+    // que o Windows associaria ao .dump em vez de recognize-lo como compactado).
+    this.nomeBase = `backup-${p.banco}-${ts}`;
+    const nomeArquivo = `${this.nomeBase}.dump`;
     const destino = path.join(path.resolve(p.destino), nomeArquivo);
     this.arquivoAtual = destino;
     // NÃO adicionar aos temporários aqui: o dump pode ser o arquivo final.
@@ -381,22 +397,26 @@ class Executor extends EventEmitter {
 
   async etapaCompactacao() {
     const p = this.params;
+    registrarFormatoZipAes();
     this.log('info', 'compactacao', 'Gerando ZIP protegido por senha (AES-256)…');
     // O arquivo atual (.enc ou dump) será removido: é temporário.
     this.temporarios.push(this.arquivoAtual);
-    const saida = this.arquivoAtual + '.zip';
+    const base = this.nomeBase
+      || path.basename(this.arquivoAtual).replace(/\.dump(\.enc)*$/i, '');
+    const saida = path.join(path.dirname(this.arquivoAtual), `${base}.zip`);
 
     const archiver = require('archiver');
-    const archiverZipEncrypted = require('archiver-zip-encrypted');
 
     await new Promise((resolve, reject) => {
       const output = fs.createWriteStream(saida);
-      const archive = archiver.create('zip', {
+      const archive = archiver.create(FORMATO_ZIP_AES, {
         zlib: { level: 9 },
         encryptionMethod: 'aes256',
         password: p.senhaZip,
       });
       archive.on('error', reject);
+      archive.on('warning', reject);
+      output.on('error', reject);
       output.on('close', resolve);
       archive.pipe(output);
       archive.file(this.arquivoAtual, { name: path.basename(this.arquivoAtual) });

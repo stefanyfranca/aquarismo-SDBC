@@ -15,7 +15,7 @@
  *
  * A escolha explícita do usuário prevalece sobre a decisão automática.
  */
-const db = require('./db');
+const db = require('../lib/db');
 
 const LIMIAR_VACUUM = 30;
 const LIMIAR_FULL = 60;

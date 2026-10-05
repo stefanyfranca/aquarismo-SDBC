@@ -10,7 +10,8 @@ const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 const fs = require('fs');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+// data/ fica na raiz do projeto (fora do código), compartilhado por todos os módulos.
+const DATA_DIR = path.join(__dirname, '..', '..', '..', 'data');
 const LOGS_DIR = path.join(DATA_DIR, 'logs');
 const OUTBOX_DIR = path.join(DATA_DIR, 'outbox');
 const DB_PATH = path.join(DATA_DIR, 'sbac.sqlite');

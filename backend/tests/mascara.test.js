@@ -3,7 +3,7 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { mascarar } = require('../src/mascara');
+const { mascarar } = require('../src/lib/mascara');
 
 test('Senha é mascarada em qualquer posição do texto', () => {
   const segredos = ['SenhaSecreta123'];

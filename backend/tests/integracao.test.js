@@ -31,8 +31,8 @@ const credenciais = {
 };
 
 test('Integração: conexão, decisão e detecção de ferramentas', { skip: !disponivel }, async () => {
-  const conexao = require('../src/conexao');
-  const pgtools = require('../src/pgtools');
+  const conexao = require('../src/lib/conexao');
+  const pgtools = require('../src/lib/pgtools');
 
   // Ferramentas detectadas.
   const ferramentas = pgtools.localizarTodas(null);
@@ -58,7 +58,7 @@ test('Integração: conexão, decisão e detecção de ferramentas', { skip: !di
 });
 
 test('Integração: pg_dump -Fc gera arquivo válido', { skip: !disponivel }, async () => {
-  const pgtools = require('../src/pgtools');
+  const pgtools = require('../src/lib/pgtools');
   const { spawnSync } = require('child_process');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sbac-it-'));
   try {

@@ -30,28 +30,54 @@ A aplicação sobe em `http://127.0.0.1:3000` (se a porta estiver ocupada, tenta
 
 ```
 aquarismo-SDBC/
-  server.js               — entrada (porta 3000 → próxima livre)
-  src/
-    app.js                — Express, middlewares, segurança, rate limit
-    rotas.js              — API REST + SSE
-    pipeline.js           — orquestração das 8 etapas
-    manutencao.js         — decisão de manutenção (fontes A/B/simulada)
-    criptografia.js       — AES-256-GCM com scrypt (streaming)
-    zipaes.js             — descompactação WinZip AES (portável)
-    retencao.js           — retenção de backups
-    restauracao.js        — restauração + prova de integridade
-    email.js              — envio SMTP ou simulação comprovável
-    conexao.js            — pools, healthcheck, permissões
-    pgtools.js            — detecção de pg_dump/pg_restore
-    sessao.js             — sessões em memória (cookie HttpOnly)
-    db.js                 — SQLite local (node:sqlite)
-    mascara.js            — filtro de segredos em logs
-    validacao.js          — validação de nomes, portas, caminhos
-  public/                 — index.html, style.css, app.js
-  demo/                   — schema.sql, seed.sql (banco de demonstração)
-  tests/                  — testes automatizados (node:test)
-  data/                   — criada em runtime (metadados, logs, outbox)
+  backend/
+    server.js               — entrada (porta 3000 → próxima livre)
+    src/
+      app.js                — Express, middlewares, segurança, rate limit
+      routes/               — definição de rotas por domínio
+        index.js            — agregador da API REST + SSE
+        conexao.js          — sessão e seleção de banco
+        configuracao.js     — configurações por conexão
+        execucoes.js        — validação, decisão, execuções, SSE e restauração
+        monitor.js          — logs e modo demonstração
+      controllers/          — handlers (lógica de request/response)
+        conexao.js  configuracao.js  execucoes.js  monitor.js
+      services/             — regras de negócio
+        pipeline.js         — orquestração das 8 etapas
+        manutencao.js       — decisão de manutenção (fontes A/B/simulada)
+        criptografia.js     — AES-256-GCM com scrypt (streaming)
+        zipaes.js           — descompactação WinZip AES (portátil)
+        retencao.js         — retenção de backups
+        restauracao.js      — restauração + prova de integridade
+        email.js            — envio SMTP ou simulação comprovável
+      lib/                  — infraestrutura compartilhada
+        conexao.js          — pools, healthcheck, permissões
+        pgtools.js          — detecção de pg_dump/pg_restore
+        sessao.js           — sessões em memória (cookie HttpOnly)
+        db.js               — SQLite local (node:sqlite)
+        http.js             — respostas de erro e chave da conexão
+        mascara.js          — filtro de segredos em logs
+        validacao.js        — validação de nomes, portas, caminhos
+    tests/                  — testes automatizados (node:test)
+  frontend/                 — HTML/CSS/JS puros, sem build
+    index.html
+    css/style.css
+    js/
+      app.js                — bootstrap e roteamento por hash
+      estado.js             — estado global e títulos das telas
+      lib/                  — api.js, dom.js, formato.js
+      telas/                — conexao, dashboard, execucao, historico,
+                              logs, configuracoes, restauracao
+  database/                 — schema.sql e seed.sql (banco de demonstração)
+  documentos/               — notas do projeto
+  data/                     — criada em runtime (metadados, logs, outbox)
 ```
+
+O backend é dividido em **rotas → controllers → services → lib**: as rotas só
+declaram caminhos e exigem sessão, os controllers traduzem request/response,
+os services concentram as regras e a lib reúne infraestrutura. O frontend é
+servido estaticamente pelo Express a partir de `frontend/` e usa módulos ES
+nativos (sem bundler).
 
 ## Decisões de projeto
 
@@ -74,7 +100,7 @@ aquarismo-SDBC/
 ### Compactação ZIP (`.zip`)
 
 - ZIP com criptografia **AES-256** (WinZip AES), gerado por `archiver-zip-encrypted`.
-- A descompactação é feita por módulo próprio (`src/zipaes.js`), portável e sem dependências externas.
+- A descompactação é feita por módulo próprio (`backend/src/services/zipaes.js`), portável e sem dependências externas.
 
 ## Decisão de manutenção
 
@@ -148,6 +174,6 @@ Cobrem: regra de decisão (11, 29/30, 60/61 dias, sem data, escolha explícita),
 
 ## Limitações
 
-- A restauração de ZIPs com AES-256 usa o módulo próprio (`src/zipaes.js`); para ZIPs sem criptografia, também funciona.
+- A restauração de ZIPs com AES-256 usa o módulo próprio (`backend/src/services/zipaes.js`); para ZIPs sem criptografia, também funciona.
 - O modo demonstração é por conexão e fica salvo localmente.
 - A aplicação serve apenas em `127.0.0.1` por padrão.

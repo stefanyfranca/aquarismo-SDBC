@@ -12,6 +12,7 @@
  */
 const crypto = require('crypto');
 const zlib = require('zlib');
+const path = require('path');
 
 function lerZipEntries(buf) {
   // Encontra o End of Central Directory (EOCD).
@@ -37,12 +38,28 @@ function lerZipEntries(buf) {
     // Local file header para achar o início dos dados.
     const lhNameLen = buf.readUInt16LE(localOffset + 26);
     const lhExtraLen = buf.readUInt16LE(localOffset + 28);
+    const extra = buf.subarray(localOffset + 30 + lhNameLen, localOffset + 30 + lhNameLen + lhExtraLen);
     const dataStart = localOffset + 30 + lhNameLen + lhExtraLen;
 
-    entries.push({ name, method, compressedSize, dataStart });
+    entries.push({ name, method, compressedSize, dataStart, extra });
     offset += 46 + nameLen + extraLen + commentLen;
   }
   return entries;
+}
+
+/**
+ * Extrai a strength (1=128, 2=192, 3=256) do extra field WinZip AES (0x9901).
+ * @returns {number|null}
+ */
+function lerStrengthAes(extra) {
+  let i = 0;
+  while (i + 4 <= extra.length) {
+    const id = extra.readUInt16LE(i);
+    const size = extra.readUInt16LE(i + 2);
+    if (id === 0x9901 && size >= 7) return extra.readUInt8(i + 4 + 4); // version(2) + vendor(2)
+    i += 4 + size;
+  }
+  return null;
 }
 
 function derivarChaves(senha, salt, keylen) {
@@ -51,12 +68,40 @@ function derivarChaves(senha, salt, keylen) {
   return {
     encKey: derived.subarray(0, keylen),
     authKey: derived.subarray(keylen, keylen + authlen),
-    verification: derived.subarray(derived.length - 2), // 2 últimos bytes
+    // Alguns geradores (archiver-zip-encrypted) estendem a chave HMAC até 2*keylen.
+    authKeyLargo: derived.subarray(keylen, 2 * keylen),
+    // Valor de verificação da senha: logo após a chave de autenticação
+    // (posição 2*keylen), não no fim do buffer derivado.
+    verification: derived.subarray(2 * keylen, 2 * keylen + 2),
   };
 }
 
 /**
- * Descompacta o primeiro arquivo de um ZIP com senha (suporta AES-256 e ZipCrypto legado não).
+ * AES em modo CTR com contador little-endian (WinZip AES).
+ * O 'aes-*-ctr' do Node incrementa o contador como inteiro big-endian de 128 bits,
+ * o que diverge do WinZip a partir do 2º bloco — daí o CTR ser feito aqui sobre
+ * AES-ECB, incrementando o byte 0 primeiro.
+ */
+function decifrarCtrLeBlocos(encKey, keylen, ciphertext) {
+  const ecb = crypto.createCipheriv(`aes-${keylen * 8}-ecb`, encKey, null);
+  ecb.setAutoPadding(false);
+  const out = Buffer.allocUnsafe(ciphertext.length);
+  const counter = Buffer.alloc(16);
+  counter[0] = 1;
+  for (let off = 0; off < ciphertext.length; off += 16) {
+    const ks = ecb.update(counter);
+    const n = Math.min(16, ciphertext.length - off);
+    for (let i = 0; i < n; i++) out[off + i] = ciphertext[off + i] ^ ks[i];
+    for (let i = 0; i < 16; i++) {
+      if (counter[i] === 255) counter[i] = 0;
+      else { counter[i]++; break; }
+    }
+  }
+  return out;
+}
+
+/**
+ * Descompacta o primeiro arquivo de um ZIP com senha (AES-256/WinZip AE-1 e AE-2).
  * @returns {Buffer} conteúdo do arquivo
  */
 function descompactarZipAes(bufferZip, senha) {
@@ -67,34 +112,46 @@ function descompactarZipAes(bufferZip, senha) {
 
   // ZIP criptografado com AES: método 99.
   if (entry.method === 99) {
-    const strength = dados[0]; // 1=128, 2=192, 3=256
-    const keylen = strength === 1 ? 16 : strength === 2 ? 24 : 32;
-    const saltLen = keylen / 2;
-    const salt = dados.subarray(1, 1 + saltLen);
-    const verification = dados.subarray(1 + saltLen, 3 + saltLen);
-    const authCode = dados.subarray(dados.length - 10);
-    const ciphertext = dados.subarray(3 + saltLen, dados.length - 10);
+    // AE-1/AE-2 guardam a strength no extra field 0x9901; alguns geradores
+    // também a escrevem como primeiro byte dos dados. Não há como saber de
+    // antemão: tentamos as combinações e validamos pelo valor de verificação.
+    const strengthExtra = lerStrengthAes(entry.extra);
+    const keylens = strengthExtra
+      ? [strengthExtra === 1 ? 16 : strengthExtra === 2 ? 24 : 32]
+      : [32, 16, 24];
 
-    const { encKey, authKey, verification: verDerivado } = derivarChaves(senha, salt, keylen);
-    if (!verDerivado.equals(verification)) {
-      throw new Error('Senha do ZIP incorreta.');
+    const tentar = (keylen, comByteStrength) => {
+      const saltLen = keylen / 2;
+      const off = comByteStrength ? 1 : 0;
+      if (dados.length < off + saltLen + 2 + 10) return null;
+      const salt = dados.subarray(off, off + saltLen);
+      const verification = dados.subarray(off + saltLen, off + saltLen + 2);
+      const authCode = dados.subarray(dados.length - 10);
+      const ciphertext = dados.subarray(off + saltLen + 2, dados.length - 10);
+      const chaves = derivarChaves(senha, salt, keylen);
+      if (!chaves.verification.equals(verification)) return null;
+
+      // HMAC-SHA1 truncado em 10 bytes sobre o ciphertext.
+      const hmacOk = [chaves.authKey, chaves.authKeyLargo].some((k) => (
+        crypto.createHmac('sha1', k).update(ciphertext).digest().subarray(0, 10).equals(authCode)
+      ));
+      return { ...chaves, ciphertext, hmacOk, keylen };
+    };
+
+    let r = null;
+    for (const keylen of keylens) {
+      for (const comByteStrength of [true, false]) {
+        r = tentar(keylen, comByteStrength);
+        if (r) break;
+      }
+      if (r) break;
     }
+    if (!r) throw new Error('Senha do ZIP incorreta.');
+    if (!r.hmacOk) throw new Error('Falha de autenticação do ZIP (HMAC).');
 
-    // HMAC-SHA1 sobre o ciphertext (autenticação).
-    const hmac = crypto.createHmac('sha1', authKey).update(ciphertext).digest();
-    if (!hmac.subarray(0, 10).equals(authCode)) {
-      throw new Error('Falha de autenticação do ZIP (HMAC).');
-    }
-
-    // AES-CTR: contador little-endian de 16 bytes começando em 1.
-    const iv = Buffer.alloc(16);
-    iv.writeUInt32LE(1, 12);
-    const decipher = crypto.createDecipheriv(`aes-${keylen * 8}-ctr`, encKey, iv);
-    const plain = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+    const plain = decifrarCtrLeBlocos(r.encKey, r.keylen, r.ciphertext);
 
     // Payload: raw deflate ou stored.
-    const actualMethod = dados.readUInt16LE(0); // strength(1) + ... não; o método real está no extra field.
-    // Para simplificar: tenta deflate; se falhar, assume stored.
     try {
       return zlib.inflateRawSync(plain);
     } catch {
@@ -108,4 +165,17 @@ function descompactarZipAes(bufferZip, senha) {
   throw new Error(`Método de compressão não suportado: ${entry.method}.`);
 }
 
-module.exports = { descompactarZipAes };
+/**
+ * Nome da primeira entrada do ZIP (o nome interno preserva as camadas:
+ * ".dump" ou ".dump.enc"), ou null se o ZIP estiver vazio/inválido.
+ */
+function nomeDaEntrada(bufferZip) {
+  try {
+    const entradas = lerZipEntries(bufferZip);
+    return entradas.length ? path.basename(entradas[0].name) : null;
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { descompactarZipAes, nomeDaEntrada };

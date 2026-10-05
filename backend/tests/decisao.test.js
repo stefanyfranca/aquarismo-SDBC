@@ -6,8 +6,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { mock } = require('node:test');
 
-const db = require('../src/db');
-const manutencao = require('../src/manutencao');
+const db = require('../src/lib/db');
+const manutencao = require('../src/services/manutencao');
 
 function dataHaDias(dias) {
   return new Date(Date.now() - dias * 86400000);

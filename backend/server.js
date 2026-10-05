@@ -5,7 +5,7 @@
  * livre e imprime a URL final no console. Serve apenas em 127.0.0.1.
  */
 const app = require('./src/app');
-const db = require('./src/db');
+const db = require('./src/lib/db');
 
 // Garante UTF-8 no console (evita acentos corrompidos no Windows).
 if (process.stdout && process.stdout.setEncoding) {

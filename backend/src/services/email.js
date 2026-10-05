@@ -7,7 +7,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const db = require('./db');
+const db = require('../lib/db');
 
 async function enviarEmailExecucao({ execucao, logs, configuracao }) {
   const destinatario = configuracao?.email_alerta || 'sbac@localhost'; // padrão para simulação

@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const cripto = require('../src/criptografia');
+const cripto = require('../src/services/criptografia');
 
 function dirTemporario() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'sbac-cripto-'));

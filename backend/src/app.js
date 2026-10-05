@@ -1,11 +1,14 @@
 /**
  * app.js — Aplicação Express: middlewares, cabeçalhos de segurança,
  * limite de JSON, rate limit simples em /api/conexao*, rotas e arquivos
- * estáticos de public/.
+ * estáticos de frontend/.
  */
 const express = require('express');
 const path = require('path');
-const rotas = require('./rotas');
+const rotas = require('./routes');
+
+// O frontend fica na raiz do projeto, fora de backend/.
+const FRONTEND_DIR = path.join(__dirname, '..', '..', 'frontend');
 
 const app = express();
 
@@ -41,11 +44,11 @@ app.use('/api/conexao', (req, res, next) => {
 app.use('/api', rotas);
 
 // Arquivos estáticos.
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(FRONTEND_DIR));
 
 // Fallback: index.html para rotas de hash não afetam o servidor, mas garantimos.
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+  res.sendFile(path.join(FRONTEND_DIR, 'index.html'));
 });
 
 // Tratamento de erros global.

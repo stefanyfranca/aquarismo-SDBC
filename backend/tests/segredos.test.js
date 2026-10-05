@@ -8,7 +8,10 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const RAIZ = path.join(__dirname, '..');
+// Raiz do projeto: os testes vivem em backend/tests/.
+const RAIZ = path.join(__dirname, '..', '..');
+const CODIGO = path.join(RAIZ, 'backend', 'src');
+const FRONTEND = path.join(RAIZ, 'frontend');
 
 function lerArquivos(dir, exts, ignorar = ['node_modules', 'data', '.git']) {
   const saida = [];
@@ -30,9 +33,9 @@ test('Não existe arquivo .env no repositório', () => {
 
 test('Código não contém senhas/hosts reais fixos', () => {
   const arquivos = [
-    ...lerArquivos(path.join(RAIZ, 'src'), ['.js']),
-    ...lerArquivos(path.join(RAIZ, 'public'), ['.js', '.html']),
-    path.join(RAIZ, 'server.js'),
+    ...lerArquivos(CODIGO, ['.js']),
+    ...lerArquivos(FRONTEND, ['.js', '.html']),
+    path.join(RAIZ, 'backend', 'server.js'),
   ];
   const padroesSuspeitos = [
     /password\s*=\s*['"][^'"]{8,}['"]/i,      // senha fixa
@@ -51,7 +54,7 @@ test('Código não contém senhas/hosts reais fixos', () => {
 });
 
 test('Código não usa dotenv', () => {
-  const arquivos = lerArquivos(path.join(RAIZ, 'src'), ['.js']);
+  const arquivos = lerArquivos(CODIGO, ['.js']);
   for (const arq of arquivos) {
     const conteudo = fs.readFileSync(arq, 'utf8');
     assert.ok(!conteudo.includes('dotenv'), `${path.relative(RAIZ, arq)} usa dotenv.`);

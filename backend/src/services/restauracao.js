@@ -21,10 +21,10 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 
-const { mascarar } = require('./mascara');
-const pgtools = require('./pgtools');
+const { mascarar } = require('../lib/mascara');
+const pgtools = require('../lib/pgtools');
 const cripto = require('./criptografia');
-const conexao = require('./conexao');
+const conexao = require('../lib/conexao');
 
 class Restaurador extends EventEmitter {
   /**
@@ -192,9 +192,14 @@ class Restaurador extends EventEmitter {
   descompactarZip(arquivo, dirSaida, senha) {
     // Usa o módulo próprio (WinZip AES) — portável, sem dependências externas.
     const zipaes = require('./zipaes');
-    const conteudo = zipaes.descompactarZipAes(fs.readFileSync(arquivo), senha);
-    const nome = path.basename(arquivo).replace(/\.zip$/i, '');
+    const buf = fs.readFileSync(arquivo);
+    const conteudo = zipaes.descompactarZipAes(buf, senha);
+    // Preserva o nome interno do ZIP (".dump" / ".dump.enc"): é ele que indica
+    // se ainda há a camada AES a desfazer.
+    const nome = zipaes.nomeDaEntrada(buf)
+      || (path.basename(arquivo).replace(/\.zip$/i, '') + '.dump');
     fs.writeFileSync(path.join(dirSaida, nome), conteudo);
+    return nome;
   }
 
   spawnMascarado(cmd, args, { env } = {}) {
