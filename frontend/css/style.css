@@ -1,0 +1,239 @@
+/* SBAC — Folha de estilos */
+:root {
+  --azul-marinho: #1a2342;
+  --azul: #2563d9;
+  --azul-escuro: #1d4fb8;
+  --fundo: #f4f6fa;
+  --branco: #ffffff;
+  --texto: #1f2937;
+  --muted: #6b7280;
+  --borda: #e5e7eb;
+  --verde: #16a34a;
+  --verde-fundo: #dcfce7;
+  --laranja: #ea580c;
+  --laranja-fondo: #ffedd5;
+  --vermelho: #dc2626;
+  --vermelho-fundo: #fee2e2;
+  --raio: 10px;
+  --sombra: 0 1px 3px rgba(0,0,0,.08);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--fundo);
+  color: var(--texto);
+  font-size: 14px;
+}
+
+#app { display: flex; min-height: 100vh; }
+
+/* ------------------------------ Sidebar ------------------------------ */
+.sidebar {
+  width: 240px;
+  background: var(--azul-marinho);
+  color: #cbd5e1;
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0; bottom: 0; left: 0;
+  z-index: 10;
+}
+.sidebar-logo {
+  display: flex; gap: 10px; align-items: center;
+  padding: 18px 16px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.logo-icon { font-size: 28px; }
+.logo-titulo { font-size: 20px; font-weight: 700; color: #fff; letter-spacing: 1px; }
+.logo-sub { font-size: 10px; color: #94a3b8; line-height: 1.2; }
+.menu { list-style: none; flex: 1; padding: 12px 0; }
+.menu a {
+  display: block; padding: 11px 18px; color: #cbd5e1; text-decoration: none;
+  font-size: 14px; border-left: 3px solid transparent;
+}
+.menu a:hover { background: rgba(255,255,255,.06); color: #fff; }
+.menu a.ativo { background: rgba(37,99,217,.25); color: #fff; border-left-color: var(--azul); }
+.sidebar-rodape { padding: 14px 16px; border-top: 1px solid rgba(255,255,255,.08); }
+
+/* ----------------------------- Conteúdo ------------------------------ */
+.conteudo { flex: 1; margin-left: 240px; display: flex; flex-direction: column; min-width: 0; }
+.cabecalho {
+  background: var(--branco); padding: 12px 24px;
+  display: flex; align-items: center; gap: 16px;
+  border-bottom: 1px solid var(--borda);
+  position: sticky; top: 0; z-index: 5;
+}
+.breadcrumb { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.cabecalho-titulo { font-size: 18px; font-weight: 600; flex: 1; }
+.cabecalho-direita { display: flex; align-items: center; gap: 12px; }
+.indicador { font-size: 13px; font-weight: 600; }
+.indicador.conectado { color: var(--verde); }
+.indicador.desconectado { color: var(--vermelho); }
+.aviso-demo {
+  background: var(--laranja-fundo); color: var(--laranja);
+  font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px;
+  animation: pulsar 2s infinite;
+}
+@keyframes pulsar { 0%,100% { opacity: 1; } 50% { opacity: .6; } }
+
+main { padding: 24px; flex: 1; }
+.tela { animation: surgir .2s ease; }
+@keyframes surgir { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; } }
+
+/* ------------------------------ Cartões ------------------------------ */
+.cartao {
+  background: var(--branco); border-radius: var(--raio);
+  box-shadow: var(--sombra); padding: 22px; margin-bottom: 20px;
+}
+.cartao h2 { font-size: 17px; margin-bottom: 6px; }
+.cartao h3 { font-size: 15px; margin-bottom: 10px; }
+.muted { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+
+.grade-cartoes { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px; }
+.cartao-resumo { text-align: center; }
+.resumo-rotulo { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.resumo-valor { font-size: 22px; font-weight: 700; margin: 8px 0 4px; }
+.resumo-valor.sucesso { color: var(--verde); }
+.resumo-valor.falha { color: var(--vermelho); }
+.resumo-fonte { font-size: 11px; color: var(--muted); }
+
+.grade-nova { display: grid; grid-template-columns: 1fr 380px; gap: 20px; align-items: start; }
+.grade-config { display: grid; grid-template-columns: 1fr 320px; gap: 20px; align-items: start; }
+@media (max-width: 1100px) { .grade-nova, .grade-config { grid-template-columns: 1fr; } }
+
+/* ------------------------------ Formulários --------------------------- */
+.form-grade { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; margin: 14px 0; }
+.form-grade label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 600; }
+.form-grade input, .form-grade select {
+  padding: 9px 11px; border: 1px solid var(--borda); border-radius: 7px;
+  font-size: 14px; font-weight: 400; background: #fff;
+}
+.form-grade input:focus, .form-grade select:focus { outline: 2px solid var(--azul); outline-offset: -1px; }
+.form-grade .checkbox, .form-grade .switch-linha { flex-direction: row; align-items: center; gap: 10px; font-weight: 400; }
+.form-grade .checkbox input { width: auto; }
+
+/* ------------------------------ Botões ------------------------------- */
+.btn {
+  border: none; border-radius: 7px; padding: 10px 18px;
+  font-size: 14px; font-weight: 600; cursor: pointer; transition: .15s;
+}
+.btn-primario { background: var(--azul); color: #fff; }
+.btn-primario:hover { background: var(--azul-escuro); }
+.btn-secundario { background: #e5e7eb; color: var(--texto); }
+.btn-secundario:hover { background: #d1d5db; }
+.btn-perigo { background: var(--vermelho); color: #fff; }
+.btn-perigo:hover { background: #b91c1c; }
+.btn-pequeno { padding: 6px 12px; font-size: 12px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.linha-botoes { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+
+/* ------------------------------ Switch ------------------------------- */
+.switch { position: relative; display: inline-block; width: 42px; height: 24px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider {
+  position: absolute; inset: 0; background: #cbd5e1; border-radius: 24px; transition: .2s; cursor: pointer;
+}
+.slider::before {
+  content: ''; position: absolute; width: 18px; height: 18px; border-radius: 50%;
+  left: 3px; top: 3px; background: #fff; transition: .2s;
+}
+.switch input:checked + .slider { background: var(--azul); }
+.switch input:checked + .slider::before { transform: translateX(18px); }
+
+/* ------------------------------ Mensagens ---------------------------- */
+.msg { margin-top: 12px; padding: 10px 14px; border-radius: 7px; font-size: 13px; display: none; }
+.msg.ok { display: block; background: var(--verde-fundo); color: var(--verde); }
+.msg.erro { display: block; background: var(--vermelho-fundo); color: var(--vermelho); }
+.msg.info { display: block; background: #dbeafe; color: #1d4ed8; }
+
+/* ------------------------------ Tabelas ------------------------------ */
+.tabela-wrap { overflow-x: auto; }
+.tabela { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tabela th, .tabela td { padding: 9px 10px; text-align: left; border-bottom: 1px solid var(--borda); }
+.tabela th { background: #f8fafc; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
+.tabela tr:hover td { background: #f8fafc; }
+
+.etiqueta { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+.etiqueta.sucesso { background: var(--verde-fundo); color: var(--verde); }
+.etiqueta.falha { background: var(--vermelho-fundo); color: var(--vermelho); }
+.etiqueta.andamento { background: var(--laranja-fundo); color: var(--laranja); }
+
+/* --------------------------- Lista de etapas ------------------------- */
+.lista-etapas { list-style: none; }
+.lista-etapas li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 4px; border-bottom: 1px solid var(--fundo); font-size: 13px;
+}
+.lista-etapas li:last-child { border-bottom: none; }
+.etapa-icone { width: 22px; text-align: center; }
+.etapa-nome { flex: 1; }
+.etapa-pendente { color: var(--muted); }
+.etapa-executando { color: var(--azul); font-weight: 600; }
+.etapa-ok { color: var(--verde); }
+.etapa-pulada { color: var(--muted); font-style: italic; }
+.etapa-falha { color: var(--vermelho); font-weight: 600; }
+
+/* ------------------------------ Logs --------------------------------- */
+.lista-logs { font-family: Consolas, monospace; font-size: 12px; max-height: 60vh; overflow-y: auto; }
+.linha-log { padding: 5px 8px; border-bottom: 1px solid var(--fundo); }
+.linha-log.erro { background: var(--vermelho-fundo); }
+.linha-log.aviso { background: var(--laranja-fundo); }
+.linha-log .log-data { color: var(--muted); }
+
+/* ------------------------------ Filtros ------------------------------ */
+.filtros { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.filtros select { padding: 7px 10px; border: 1px solid var(--borda); border-radius: 7px; }
+
+/* ------------------------------ Modais ------------------------------- */
+.modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.modal-conteudo {
+  background: #fff; border-radius: var(--raio); padding: 24px;
+  width: 480px; max-width: 92vw; max-height: 85vh; overflow-y: auto;
+}
+.modal-grande { width: 720px; }
+.modal-conteudo h3 { margin-bottom: 12px; }
+
+/* ------------------------------ Toasts ------------------------------- */
+.toasts { position: fixed; bottom: 20px; right: 20px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
+.toast {
+  padding: 12px 18px; border-radius: 8px; color: #fff; font-size: 13px; font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0,0,0,.2); animation: surgir .2s ease; max-width: 360px;
+}
+.toast.ok { background: var(--verde); }
+.toast.erro { background: var(--vermelho); }
+.toast.info { background: var(--azul); }
+
+/* --------------------------- Lista de bancos ------------------------- */
+.lista-bancos { list-style: none; columns: 2; }
+.lista-bancos li { margin-bottom: 6px; }
+.lista-bancos button {
+  background: #f1f5f9; border: 1px solid var(--borda); border-radius: 6px;
+  padding: 7px 12px; cursor: pointer; font-size: 13px; width: 100%; text-align: left;
+}
+.lista-bancos button:hover { background: #e0e7ff; border-color: var(--azul); }
+
+/* --------------------------- Resumo config --------------------------- */
+.lista-resumo { list-style: none; font-size: 13px; }
+.lista-resumo li { padding: 5px 0; border-bottom: 1px solid var(--fundo); display: flex; justify-content: space-between; gap: 10px; }
+.lista-resumo li span:first-child { color: var(--muted); }
+
+/* --------------------------- Integridade ---------------------------- */
+.tabela-integridade { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+.tabela-integridade th, .tabela-integridade td { padding: 6px 8px; border: 1px solid var(--borda); text-align: left; }
+.tabela-integridade th { background: #f8fafc; }
+.status-identico { color: var(--verde); font-weight: 700; }
+.status-divergente { color: var(--vermelho); font-weight: 700; }
+
+/* ------------------------------ Responsivo --------------------------- */
+@media (max-width: 800px) {
+  .sidebar { width: 60px; }
+  .sidebar-logo div:not(.logo-icon), .menu a { font-size: 0; }
+  .menu a::first-letter { font-size: 16px; }
+  .conteudo { margin-left: 60px; }
+  .form-grade { grid-template-columns: 1fr; }
+}

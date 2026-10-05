@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SBAC – Sistema de Backup Aquarismo Charrua</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <div class="sidebar-logo">
+        <span class="logo-icon">🐟</span>
+        <div>
+          <div class="logo-titulo">SBAC</div>
+          <div class="logo-sub">Sistema de Backup Aquarismo Charrua</div>
+        </div>
+      </div>
+      <ul class="menu">
+        <li><a href="#/conexao" data-rota="conexao">🔌 Conexão</a></li>
+        <li><a href="#/dashboard" data-rota="dashboard">📊 Dashboard</a></li>
+        <li><a href="#/nova" data-rota="nova">▶️ Nova Execução</a></li>
+        <li><a href="#/historico" data-rota="historico">🕘 Histórico</a></li>
+        <li><a href="#/logs" data-rota="logs">📄 Logs</a></li>
+        <li><a href="#/configuracoes" data-rota="configuracoes">⚙️ Configurações</a></li>
+      </ul>
+      <div class="sidebar-rodape">
+        <button id="btn-desconectar" class="btn btn-perigo btn-pequeno" style="display:none">Desconectar</button>
+      </div>
+    </nav>
+
+    <!-- Conteúdo -->
+    <div class="conteudo">
+      <header class="cabecalho">
+        <div class="breadcrumb" id="breadcrumb">Conexão</div>
+        <div class="cabecalho-titulo" id="titulo-pagina">Conexão</div>
+        <div class="cabecalho-direita">
+          <span id="aviso-demo" class="aviso-demo" style="display:none">⚠️ MODO DEMONSTRAÇÃO ATIVO</span>
+          <span id="indicador-conexao" class="indicador desconectado">● Desconectado</span>
+        </div>
+      </header>
+
+      <main id="main">
+        <!-- TELA: CONEXÃO -->
+        <section id="tela-conexao" class="tela">
+          <div class="cartao">
+            <h2>Conexão com o PostgreSQL</h2>
+            <p class="muted">Informe os dados do servidor. A senha fica somente em memória e nunca é enviada ao frontend após a conexão.</p>
+            <form id="form-conexao" class="form-grade">
+              <label>Host
+                <input type="text" id="cx-host" placeholder="127.0.0.1" required>
+              </label>
+              <label>Porta
+                <input type="number" id="cx-porta" value="5432" min="1" max="65535" required>
+              </label>
+              <label>Usuário
+                <input type="text" id="cx-usuario" placeholder="postgres" required>
+              </label>
+              <label>Senha
+                <input type="password" id="cx-senha" placeholder="••••••••" required>
+              </label>
+              <label>Banco de dados (opcional na conexão)
+                <input type="text" id="cx-banco" placeholder="postgres">
+              </label>
+              <label class="checkbox">
+                <input type="checkbox" id="cx-ssl"> Usar SSL
+              </label>
+            </form>
+            <div class="linha-botoes">
+              <button type="button" id="btn-testar" class="btn btn-secundario">Testar conexão</button>
+              <button type="submit" form="form-conexao" class="btn btn-primario">Conectar</button>
+            </div>
+            <div id="msg-conexao" class="msg"></div>
+          </div>
+
+          <div class="cartao" id="cartao-bancos" style="display:none">
+            <h3>Bancos disponíveis</h3>
+            <p class="muted">Selecione um banco para trabalhar (não precisa digitar a senha novamente).</p>
+            <ul id="lista-bancos" class="lista-bancos"></ul>
+          </div>
+        </section>
+
+        <!-- TELA: DASHBOARD -->
+        <section id="tela-dashboard" class="tela" style="display:none">
+          <div class="grade-cartoes">
+            <div class="cartao cartao-resumo">
+              <div class="resumo-rotulo">Última manutenção</div>
+              <div class="resumo-valor" id="dash-ultima-manutencao">—</div>
+              <div class="resumo-fonte" id="dash-fonte-manutencao"></div>
+            </div>
+            <div class="cartao cartao-resumo">
+              <div class="resumo-rotulo">Sucesso</div>
+              <div class="resumo-valor sucesso" id="dash-sucessos">0</div>
+            </div>
+            <div class="cartao cartao-resumo">
+              <div class="resumo-rotulo">Falhas</div>
+              <div class="resumo-valor falha" id="dash-falhas">0</div>
+            </div>
+            <div class="cartao cartao-resumo">
+              <div class="resumo-rotulo">Última execução</div>
+              <div class="resumo-valor" id="dash-ultima-execucao">—</div>
+            </div>
+          </div>
+          <div class="cartao">
+            <h3>Resumo do banco conectado</h3>
+            <div id="dash-resumo-banco" class="muted">Conecte-se para ver o resumo.</div>
+          </div>
+        </section>
+
+        <!-- TELA: NOVA EXECUÇÃO -->
+        <section id="tela-nova" class="tela" style="display:none">
+          <div class="grade-nova">
+            <div class="cartao">
+              <h2>Iniciar backup manual</h2>
+              <form id="form-execucao" class="form-grade">
+                <label>Banco (conectado)
+                  <select id="ex-banco" required></select>
+                </label>
+                <label>Destino do backup
+                  <input type="text" id="ex-destino" placeholder="C:\backups" required>
+                </label>
+                <label>Quantidade a manter
+                  <input type="number" id="ex-quantidade" min="1" placeholder="Ex.: 3">
+                </label>
+                <label>Caminho para cópia adicional
+                  <input type="text" id="ex-copia" placeholder="Opcional">
+                </label>
+                <label>Manutenção
+                  <select id="ex-manutencao">
+                    <option value="AUTOMATICA">Automática (decide pela data)</option>
+                    <option value="NENHUMA">Nenhuma</option>
+                    <option value="VACUUM">VACUUM</option>
+                    <option value="VACUUM_FULL_ANALYZE">Completa (VACUUM FULL ANALYZE)</option>
+                  </select>
+                </label>
+                <label class="switch-linha">
+                  <span>Compactar (ZIP com senha)</span>
+                  <span class="switch"><input type="checkbox" id="ex-compactar"><span class="slider"></span></span>
+                </label>
+                <div id="campo-senha-zip" style="display:none">
+                  <label>Senha do ZIP (mín. 8)
+                    <input type="password" id="ex-senha-zip">
+                  </label>
+                  <label>Confirme a senha do ZIP
+                    <input type="password" id="ex-senha-zip2">
+                  </label>
+                </div>
+                <label class="switch-linha">
+                  <span>Criptografar (AES-256)</span>
+                  <span class="switch"><input type="checkbox" id="ex-criptografar"><span class="slider"></span></span>
+                </label>
+                <div id="campo-chave-aes" style="display:none">
+                  <label>Chave AES (mín. 8)
+                    <input type="password" id="ex-chave-aes">
+                  </label>
+                  <label>Confirme a chave AES
+                    <input type="password" id="ex-chave-aes2">
+                  </label>
+                </div>
+                <label class="switch-linha" id="linha-simular-falha" style="display:none">
+                  <span>Simular falha controlada (demonstração)</span>
+                  <span class="switch"><input type="checkbox" id="ex-simular-falha"><span class="slider"></span></span>
+                </label>
+              </form>
+            </div>
+
+            <div class="coluna-lateral">
+              <div class="cartao">
+                <h3>Resumo da configuração</h3>
+                <ul id="resumo-config" class="lista-resumo"></ul>
+                <div class="linha-botoes">
+                  <button type="button" id="btn-validar" class="btn btn-secundario">Testar conexão/diretórios</button>
+                  <button type="button" id="btn-iniciar" class="btn btn-primario">▷ Iniciar execução</button>
+                </div>
+                <div id="msg-validar" class="msg"></div>
+              </div>
+              <div class="cartao">
+                <h3>Andamento</h3>
+                <ol id="lista-etapas" class="lista-etapas"></ol>
+                <div id="resultado-execucao" class="msg"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- TELA: HISTÓRICO -->
+        <section id="tela-historico" class="tela" style="display:none">
+          <div class="cartao">
+            <h2>Histórico de execuções</h2>
+            <div class="filtros">
+              <select id="filtro-status">
+                <option value="">Status: todos</option>
+                <option value="sucesso">Sucesso</option>
+                <option value="falha">Falha</option>
+                <option value="andamento">Em andamento</option>
+              </select>
+              <select id="filtro-periodo">
+                <option value="">Período: todo</option>
+                <option value="7">Últimos 7 dias</option>
+                <option value="30">Últimos 30 dias</option>
+                <option value="90">Últimos 90 dias</option>
+              </select>
+              <button id="btn-filtrar" class="btn btn-secundario btn-pequeno">Filtrar</button>
+            </div>
+            <div class="tabela-wrap">
+              <table class="tabela" id="tabela-historico">
+                <thead>
+                  <tr>
+                    <th>ID</th><th>Início</th><th>Término</th><th>Duração</th><th>Status</th>
+                    <th>Decisão manutenção</th><th>Regra aplicada</th><th>Resultado</th><th>Ação</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- TELA: LOGS -->
+        <section id="tela-logs" class="tela" style="display:none">
+          <div class="cartao">
+            <h2>Logs</h2>
+            <div class="filtros">
+              <select id="filtro-log-execucao"><option value="">Execução: todas</option></select>
+              <select id="filtro-log-nivel">
+                <option value="">Nível: todos</option>
+                <option value="info">Info</option>
+                <option value="aviso">Aviso</option>
+                <option value="erro">Erro</option>
+              </select>
+            </div>
+            <div id="lista-logs" class="lista-logs"></div>
+          </div>
+        </section>
+
+        <!-- TELA: CONFIGURAÇÕES -->
+        <section id="tela-configuracoes" class="tela" style="display:none">
+          <div class="grade-config">
+            <div class="cartao">
+              <h2>Configurações de backup</h2>
+              <form id="form-config" class="form-grade">
+                <label>Destino padrão
+                  <input type="text" id="cf-destino">
+                </label>
+                <label>Quantidade a manter
+                  <input type="number" id="cf-quantidade" min="1">
+                </label>
+                <label>Cópia adicional
+                  <input type="text" id="cf-copia">
+                </label>
+                <label class="switch-linha">
+                  <span>Criptografar</span>
+                  <span class="switch"><input type="checkbox" id="cf-criptografar"><span class="slider"></span></span>
+                </label>
+                <label class="switch-linha">
+                  <span>Compactar</span>
+                  <span class="switch"><input type="checkbox" id="cf-compactar"><span class="slider"></span></span>
+                </label>
+                <label>Pasta bin do PostgreSQL (se não estiver no PATH)
+                  <input type="text" id="cf-pasta-bin" placeholder="C:\Program Files\PostgreSQL\18\bin">
+                </label>
+                <label>E-mail de alerta
+                  <input type="email" id="cf-email" placeholder="admin@exemplo.com">
+                </label>
+                <label>SMTP host
+                  <input type="text" id="cf-smtp-host" placeholder="smtp.exemplo.com">
+                </label>
+                <label>SMTP porta
+                  <input type="number" id="cf-smtp-porta" value="587">
+                </label>
+                <label>SMTP usuário
+                  <input type="text" id="cf-smtp-usuario">
+                </label>
+                <label class="switch-linha">
+                  <span>Modo demonstração</span>
+                  <span class="switch"><input type="checkbox" id="cf-demo"><span class="slider"></span></span>
+                </label>
+                <div id="campos-demo" style="display:none">
+                  <label>Data simulada da última manutenção
+                    <select id="cf-demo-data">
+                      <option value="">Sem histórico</option>
+                      <option value="12">Há 12 dias (&lt; 30 → sem manutenção)</option>
+                      <option value="43">Há 43 dias (30–60 → VACUUM)</option>
+                      <option value="75">Há 75 dias (&gt; 60 → VACUUM FULL ANALYZE)</option>
+                    </select>
+                  </label>
+                </div>
+              </form>
+              <div class="linha-botoes">
+                <button type="submit" form="form-config" class="btn btn-primario">Salvar configurações</button>
+              </div>
+              <div id="msg-config" class="msg"></div>
+            </div>
+            <div class="cartao cartao-lateral">
+              <h3>Configuração ativa</h3>
+              <p class="muted">Estas configurações valem para a <strong>próxima</strong> execução. Elas ficam salvas localmente (fora do banco-alvo) e não incluem senhas.</p>
+              <ul id="config-ativa" class="lista-resumo"></ul>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- Modal de confirmação (VACUUM FULL) -->
+  <div id="modal-confirmacao" class="modal" style="display:none">
+    <div class="modal-conteudo">
+      <h3>⚠️ Confirmação necessária</h3>
+      <p id="modal-texto"></p>
+      <div class="linha-botoes">
+        <button id="modal-cancelar" class="btn btn-secundario">Cancelar</button>
+        <button id="modal-confirmar" class="btn btn-perigo">Confirmar e executar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de detalhes da execução -->
+  <div id="modal-detalhes" class="modal" style="display:none">
+    <div class="modal-conteudo modal-grande">
+      <h3 id="modal-detalhes-titulo">Detalhes da execução</h3>
+      <div id="modal-detalhes-corpo"></div>
+      <div class="linha-botoes">
+        <button id="modal-detalhes-fechar" class="btn btn-secundario">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de restauração -->
+  <div id="modal-restaurar" class="modal" style="display:none">
+    <div class="modal-conteudo">
+      <h3>Restaurar e conferir integridade</h3>
+      <form id="form-restaurar" class="form-grade">
+        <label>Banco de destino
+          <input type="text" id="rs-destino" placeholder="nome_restore" required>
+        </label>
+        <div id="rs-campos-senha"></div>
+        <label class="checkbox"><input type="checkbox" id="rs-recriar"> O destino existe — recriar (apagar) o banco</label>
+        <label class="checkbox"><input type="checkbox" id="rs-so-contagem"> Somente contagem (tabelas muito grandes)</label>
+      </form>
+      <div id="rs-progresso" class="msg"></div>
+      <div id="rs-integridade"></div>
+      <div class="linha-botoes">
+        <button type="button" id="rs-cancelar" class="btn btn-secundario">Cancelar</button>
+        <button type="submit" form="form-restaurar" class="btn btn-primario">Restaurar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toasts -->
+  <div id="toasts" class="toasts"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
