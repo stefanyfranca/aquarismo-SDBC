@@ -55,6 +55,9 @@ body {
 }
 .menu a:hover { background: rgba(255,255,255,.06); color: #fff; }
 .menu a.ativo { background: rgba(37,99,217,.25); color: #fff; border-left-color: var(--azul); }
+/* Telas que exigem conexão ativa (clique avisa e volta para Conexão). */
+.menu a.bloqueado { opacity: .45; }
+.menu a.bloqueado:hover { color: #cbd5e1; background: rgba(255,255,255,.06); }
 .sidebar-rodape { padding: 14px 16px; border-top: 1px solid rgba(255,255,255,.08); }
 
 /* ----------------------------- Conteúdo ------------------------------ */

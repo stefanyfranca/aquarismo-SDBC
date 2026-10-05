@@ -6,6 +6,7 @@
  * Cada tela vive em js/telas/; o estado compartilhado em js/estado.js.
  */
 import { TITULOS, estado } from './estado.js';
+import { toast } from './lib/dom.js';
 import { initConexao, atualizarIndicador } from './telas/conexao.js';
 import { carregarDashboard } from './telas/dashboard.js';
 import { initNovaExecucao, carregarNovaExecucao } from './telas/execucao.js';
@@ -25,6 +26,20 @@ const TELAS = {
 
 function navegar(rota) {
   if (!TITULOS[rota]) rota = 'conexao';
+
+  // Bloqueia telas que exigem conexão: avisa e volta para a tela de conexão
+  // (sem isso o clique parece não funcionar).
+  if (rota !== 'conexao' && !estado.conectado) {
+    toast('Conecte-se ao PostgreSQL para acessar esta tela.', 'erro');
+    if (location.hash !== '#/conexao') {
+      location.hash = '#/conexao'; // dispara hashchange
+    } else {
+      history.replaceState(null, '', '#/conexao');
+      navegar('conexao');
+    }
+    return;
+  }
+
   estado.rotaAtual = rota;
   if (estado.eventSource) { estado.eventSource.close(); estado.eventSource = null; }
 
@@ -35,12 +50,6 @@ function navegar(rota) {
   });
   document.getElementById('breadcrumb').textContent = `SBAC / ${TITULOS[rota]}`;
   document.getElementById('titulo-pagina').textContent = TITULOS[rota];
-
-  // Bloqueia telas que exigem conexão.
-  if (rota !== 'conexao' && !estado.conectado) {
-    location.hash = '#/conexao';
-    return;
-  }
 
   TELAS[rota]?.();
 }

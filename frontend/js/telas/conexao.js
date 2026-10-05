@@ -27,6 +27,10 @@ export async function atualizarIndicador() {
     el.className = 'indicador desconectado';
     document.getElementById('btn-desconectar').style.display = 'none';
   }
+  // Sinaliza no menu quais telas exigem conexão.
+  document.querySelectorAll('.menu a').forEach(a => {
+    a.classList.toggle('bloqueado', !estado.conectado && a.dataset.rota !== 'conexao');
+  });
   // Aviso do modo demonstração.
   try {
     const d = await api('GET', '/api/demo');
