@@ -117,16 +117,37 @@ function validarCaminho(caminho, { rotulo = 'Caminho' } = {}) {
 }
 
 /**
- * Verifica se um diretório existe e é gravável (tenta criar arquivo temporário).
- * @returns {Promise<string|null>} erro ou null.
+ * Verifica se o diretório já existe.
+ * @returns {string|null} erro ou null.
  */
-async function verificarDiretorioGravavel(dir) {
+function verificarDiretorioExiste(dir, { rotulo = 'Diretório' } = {}) {
   const fs = require('fs');
   const abs = path.resolve(dir);
-  try {
-    await fs.promises.mkdir(abs, { recursive: true });
-  } catch (e) {
-    return `Não foi possível criar o diretório "${abs}": ${e.message}`;
+  if (!fs.existsSync(abs)) {
+    return `${rotulo} "${abs}" não existe. Confira o caminho ou marque a criação automática.`;
+  }
+  if (!fs.statSync(abs).isDirectory()) {
+    return `${rotulo} "${abs}" não é um diretório.`;
+  }
+  return null;
+}
+
+/**
+ * Verifica se um diretório existe e é gravável (tenta criar arquivo temporário).
+ * Com `criar: false`, um diretório inexistente é erro em vez de ser criado —
+ * evita transformar um caminho digitado errado em uma pasta nova.
+ * @returns {Promise<string|null>} erro ou null.
+ */
+async function verificarDiretorioGravavel(dir, { criar = true, rotulo = 'Diretório' } = {}) {
+  const fs = require('fs');
+  const abs = path.resolve(dir);
+  if (!fs.existsSync(abs)) {
+    if (!criar) return verificarDiretorioExiste(abs, { rotulo });
+    try {
+      await fs.promises.mkdir(abs, { recursive: true });
+    } catch (e) {
+      return `Não foi possível criar o diretório "${abs}": ${e.message}`;
+    }
   }
   const teste = path.join(abs, `.sbac-test-${process.pid}-${Date.now()}.tmp`);
   try {
@@ -158,5 +179,5 @@ async function verificarEspacoLivre(dir, minimoMB = 100) {
 
 module.exports = {
   validarBanco, validarUsuario, validarHost, validarPorta,
-  validarCaminho, verificarDiretorioGravavel, verificarEspacoLivre, isWindows,
+  validarCaminho, verificarDiretorioExiste, verificarDiretorioGravavel, verificarEspacoLivre, isWindows,
 };

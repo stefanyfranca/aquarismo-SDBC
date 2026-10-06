@@ -26,6 +26,7 @@ export function initNovaExecucao() {
   });
   document.getElementById('ex-manutencao').addEventListener('change', () => atualizarResumo());
   document.getElementById('ex-destino').addEventListener('input', atualizarResumo);
+  document.getElementById('ex-criar-destino').addEventListener('change', atualizarResumo);
   document.getElementById('ex-quantidade').addEventListener('input', atualizarResumo);
   document.getElementById('ex-copia').addEventListener('input', atualizarResumo);
   document.getElementById('ex-compactar').addEventListener('change', atualizarResumo);
@@ -75,9 +76,11 @@ function atualizarResumo() {
   const manut = document.getElementById('ex-manutencao').selectedOptions[0]?.textContent || '—';
   const compactar = document.getElementById('ex-compactar').checked ? 'Sim' : 'Não';
   const cripto = document.getElementById('ex-criptografar').checked ? 'Sim' : 'Não';
+  const criarDir = document.getElementById('ex-criar-destino').checked ? 'Sim' : 'Não';
   document.getElementById('resumo-config').innerHTML = `
     <li><span>Banco</span><span>${esc(banco)}</span></li>
     <li><span>Destino</span><span>${esc(destino)}</span></li>
+    <li><span>Criar diretório</span><span>${criarDir}</span></li>
     <li><span>Retenção</span><span>${esc(String(qtd))}</span></li>
     <li><span>Cópia adicional</span><span>${esc(copia)}</span></li>
     <li><span>Manutenção</span><span>${esc(manut)}</span></li>
@@ -131,6 +134,7 @@ function lerFormExecucao() {
   return {
     banco: document.getElementById('ex-banco').value,
     destino: document.getElementById('ex-destino').value.trim(),
+    criarDiretorio: document.getElementById('ex-criar-destino').checked,
     quantidadeManter: Number(document.getElementById('ex-quantidade').value) || null,
     copiaAdicional: document.getElementById('ex-copia').value.trim() || null,
     compactar: document.getElementById('ex-compactar').checked,

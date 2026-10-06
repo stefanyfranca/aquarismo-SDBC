@@ -48,11 +48,12 @@ async function validar(req, res) {
   }
 
   // Diretórios
+  const criar = p.criarDiretorio === true;
   {
     const e1 = v.validarCaminho(p.destino, { rotulo: 'Destino' });
     if (e1) resultados.erros.push(e1);
     else {
-      const e2 = await v.verificarDiretorioGravavel(p.destino);
+      const e2 = await v.verificarDiretorioGravavel(p.destino, { criar, rotulo: 'Diretório de destino' });
       if (e2) resultados.erros.push(e2);
       else resultados.diretorios.push(p.destino);
     }
@@ -61,7 +62,7 @@ async function validar(req, res) {
     const e1 = v.validarCaminho(p.copiaAdicional, { rotulo: 'Cópia adicional' });
     if (e1) resultados.erros.push(e1);
     else {
-      const e2 = await v.verificarDiretorioGravavel(p.copiaAdicional);
+      const e2 = await v.verificarDiretorioGravavel(p.copiaAdicional, { criar, rotulo: 'Diretório de cópia adicional' });
       if (e2) resultados.erros.push(e2);
       else resultados.diretorios.push(p.copiaAdicional);
     }
@@ -152,6 +153,7 @@ async function iniciar(req, res) {
     destino: p.destino,
     quantidadeManter: p.quantidadeManter,
     copiaAdicional: p.copiaAdicional,
+    criarDiretorio: p.criarDiretorio === true,
     compactar: !!p.compactar,
     criptografar: !!p.criptografar,
     chaveAes: p.chaveAes,

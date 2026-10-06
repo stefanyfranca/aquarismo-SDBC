@@ -264,6 +264,17 @@ class Executor extends EventEmitter {
       }
     }
 
+    // Falha rápida: destino inexistente é erro antes de qualquer conversa com o
+    // banco (caminho digitado errado não deve virar pasta criada).
+    if (p.criarDiretorio !== true) {
+      const erroExiste = v.verificarDiretorioExiste(p.destino, { rotulo: 'Diretório de destino' });
+      if (erroExiste) throw new Error(erroExiste);
+      if (p.copiaAdicional) {
+        const erroExiste2 = v.verificarDiretorioExiste(p.copiaAdicional, { rotulo: 'Diretório de cópia adicional' });
+        if (erroExiste2) throw new Error(erroExiste2);
+      }
+    }
+
     // Ferramentas do PostgreSQL.
     const ferramentas = pgtools.localizarTodas(p.pastaBin);
     if (!ferramentas.pg_dump) throw new Error('pg_dump não encontrado. Informe a pasta bin do PostgreSQL nas Configurações.');
@@ -288,11 +299,18 @@ class Executor extends EventEmitter {
       this.log('aviso', 'validacao', perm.erros.join(' '));
     }
 
-    // Diretórios graváveis + espaço.
-    const erroGrav = await v.verificarDiretorioGravavel(p.destino);
+    // Diretórios graváveis + espaço. Um caminho inexistente só é criado quando o
+    // usuário marcou "criar diretório": destino digitado errado deve falhar, não
+    // criar uma pasta nova e "finalizar" como se nada tivesse acontecido.
+    const criar = p.criarDiretorio === true;
+    const erroGrav = await v.verificarDiretorioGravavel(p.destino, {
+      criar, rotulo: 'Diretório de destino',
+    });
     if (erroGrav) throw new Error(erroGrav);
     if (p.copiaAdicional) {
-      const erroGrav2 = await v.verificarDiretorioGravavel(p.copiaAdicional);
+      const erroGrav2 = await v.verificarDiretorioGravavel(p.copiaAdicional, {
+        criar, rotulo: 'Diretório de cópia adicional',
+      });
       if (erroGrav2) throw new Error(erroGrav2);
     }
     const erroEspaco = await v.verificarEspacoLivre(p.destino);

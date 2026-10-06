@@ -90,3 +90,36 @@ test('Nomes reservados do Windows são rejeitados', () => {
     assert.ok(v.validarCaminho('C:\\COM1'));
   }
 });
+
+test('Diretório inexistente é erro quando não se pode criar', async () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'sbac-val-'));
+  const alvo = path.join(base, 'pasta-que-nao-existe');
+
+  assert.ok(v.verificarDiretorioExiste(alvo), 'deveria reportar que não existe');
+  assert.equal(v.verificarDiretorioExiste(base), null);
+
+  const erro = await v.verificarDiretorioGravavel(alvo, { criar: false });
+  assert.ok(erro, 'deveria recusar diretório inexistente');
+  assert.match(erro, /não existe/);
+  assert.ok(!fs.existsSync(alvo), 'não deve criar o diretório quando criar=false');
+
+  // Com criar:true, cria e confirma gravação.
+  assert.equal(await v.verificarDiretorioGravavel(alvo, { criar: true }), null);
+  assert.ok(fs.existsSync(alvo));
+  fs.rmSync(base, { recursive: true, force: true });
+});
+
+test('Diretório inexistente só é aceito como arquivo, não como pasta', async () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'sbac-val-'));
+  const arquivo = path.join(base, 'e-um-arquivo.txt');
+  fs.writeFileSync(arquivo, 'x');
+
+  assert.ok(v.verificarDiretorioExiste(arquivo), 'deveria avisar que não é diretório');
+  fs.rmSync(base, { recursive: true, force: true });
+});

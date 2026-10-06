@@ -116,6 +116,7 @@ main { padding: 24px; flex: 1; }
 .form-grade input:focus, .form-grade select:focus { outline: 2px solid var(--azul); outline-offset: -1px; }
 .form-grade .checkbox, .form-grade .switch-linha { flex-direction: row; align-items: center; gap: 10px; font-weight: 400; }
 .form-grade .checkbox input { width: auto; }
+.form-grade .dica { font-size: 12px; font-weight: 400; color: var(--texto-fraco, #64748b); }
 
 /* ------------------------------ Botões ------------------------------- */
 .btn {
