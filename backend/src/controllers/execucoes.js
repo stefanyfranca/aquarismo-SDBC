@@ -14,6 +14,10 @@ const { erro, chaveConexaoDe } = require('../lib/http');
 /** Execuções ativas (para SSE e concorrência). */
 const execucoesAtivas = new Map(); // execucaoId -> Executor
 const restauracoesAtivas = new Map(); // execucaoId -> Restaurador
+// Restaurações já terminadas: mantém a trilha de eventos para reenviar a
+// clientes SSE que conectam depois do fim (a restauração não é persistida).
+const restauracoesConcluidas = new Map(); // execucaoId -> [{nome, dados}]
+const TTL_CONCLUIDAS_MS = 10 * 60 * 1000;
 
 /* ------------------------------ validação ------------------------------ */
 
@@ -290,7 +294,12 @@ function restaurar(req, res) {
   const aguardarPronto = new Promise(resolve => restaurador.once('fim', r => resolve(r)));
   restaurador.executar();
   restauracoesAtivas.set(id, restaurador);
-  aguardarPronto.finally(() => restauracoesAtivas.delete(id));
+  aguardarPronto.finally(() => {
+    restauracoesAtivas.delete(id);
+    restauracoesConcluidas.set(id, restaurador.historico);
+    const timer = setTimeout(() => restauracoesConcluidas.delete(id), TTL_CONCLUIDAS_MS);
+    if (typeof timer.unref === 'function') timer.unref();
+  });
 
   res.status(202).json({ mensagem: 'Restauração iniciada. Acompanhe o progresso via SSE.' });
 }
@@ -301,6 +310,21 @@ function eventosRestauracao(req, res) {
   const enviar = escritorSse(res);
 
   const r = restauracoesAtivas.get(id);
+  const historico = r ? r.historico : restauracoesConcluidas.get(id);
+  if (!historico) {
+    enviar('fim', { status: 'nao_encontrado' });
+    return res.end();
+  }
+
+  // Reenvia tudo o que já aconteceu (fecha a janela entre o POST e a abertura
+  // do EventSource). O laço é síncrono: nenhum evento ao vivo escapa entre o
+  // reenvio e a associação dos listeners abaixo.
+  let concluido = false;
+  for (const ev of historico) {
+    if (ev.nome === 'fim') concluido = true;
+    enviar(ev.nome, ev.dados);
+  }
+  if (concluido) return res.end();
   if (!r) {
     enviar('fim', { status: 'nao_encontrado' });
     return res.end();

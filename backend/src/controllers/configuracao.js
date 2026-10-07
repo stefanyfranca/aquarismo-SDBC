@@ -4,10 +4,15 @@
  */
 const db = require('../lib/db');
 const v = require('../lib/validacao');
+const email = require('../services/email');
 const { erro, chaveConexaoDe } = require('../lib/http');
 
 function listar(req, res) {
-  res.json(db.getConfiguracao(chaveConexaoDe(req.sessao)) || {});
+  const cfg = { ...(db.getConfiguracao(chaveConexaoDe(req.sessao)) || {}) };
+  // Nunca devolve a senha SMTP: só o indicador de que ela existe.
+  cfg.smtp_senha_definida = !!cfg.smtp_senha;
+  delete cfg.smtp_senha;
+  res.json(cfg);
 }
 
 function salvar(req, res) {
@@ -26,6 +31,8 @@ function salvar(req, res) {
     smtp_host: b.smtpHost ?? atual.smtp_host ?? null,
     smtp_porta: b.smtpPorta ?? atual.smtp_porta ?? null,
     smtp_usuario: b.smtpUsuario ?? atual.smtp_usuario ?? null,
+    // undefined = mantém a senha atual; '' = limpa; texto = nova senha.
+    smtp_senha: b.smtpSenha === undefined ? undefined : (b.smtpSenha || null),
     demo_ativo: b.demoAtivo ?? atual.demo_ativo ?? 0,
     demo_data_manutencao: b.demoDataManutencao ?? atual.demo_data_manutencao ?? null,
   };
@@ -42,4 +49,37 @@ function salvar(req, res) {
   res.json({ ok: true, mensagem: 'Configuração salva.' });
 }
 
-module.exports = { listar, salvar };
+/**
+ * Envia um e-mail de teste com a configuração salva. Sem SMTP, o resultado
+ * volta como "simulado" (grava em data/outbox/) para o front expor o motivo.
+ */
+async function testarEmail(req, res) {
+  const chave = chaveConexaoDe(req.sessao);
+  const cfg = db.getConfiguracao(chave) || {};
+  if (!cfg.email_alerta) {
+    return erro(res, 400, 'Informe o e-mail de alerta e salve antes de testar.');
+  }
+  try {
+    const agora = new Date().toISOString();
+    const r = await email.enviarEmailExecucao({
+      execucao: {
+        id: 'teste',
+        status: 'teste',
+        chave_conexao: chave,
+        inicio: agora,
+        fim: agora,
+        manutencao_tipo: null,
+        regra_aplicada: null,
+        resultado: 'Mensagem de teste do SBAC — configuração de alertas verificada.',
+      },
+      logs: [],
+      configuracao: cfg,
+      assunto: '[SBAC] Teste de e-mail — alertas de execução',
+    });
+    res.json({ ok: true, ...r });
+  } catch (e) {
+    return erro(res, 500, `Falha ao enviar o teste: ${e.message}`);
+  }
+}
+
+module.exports = { listar, salvar, testarEmail };

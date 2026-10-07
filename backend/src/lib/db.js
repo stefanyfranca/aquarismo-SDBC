@@ -2,7 +2,9 @@
  * db.js — Armazenamento local de metadados da plataforma (FORA do banco-alvo).
  *
  * Usa SQLite via node:sqlite (builtin do Node 22+). Nenhum dado de conexão
- * sensível (usuário/senha) é gravado: apenas a chave host:porta/banco.
+ * sensível (usuário/senha do banco) é gravado: apenas a chave host:porta/banco.
+ * Único segredo persistido: a senha SMTP de alerta (coluna smtp_senha), que
+ * vive só em data/ (fora do repositório) e nunca é devolvida pela API.
  * Em inicializações, execuções "em andamento" (queda do servidor) são
  * marcadas como falha com mensagem explicativa.
  */
@@ -73,6 +75,7 @@ function init() {
       smtp_host TEXT,
       smtp_porta INTEGER,
       smtp_usuario TEXT,
+      smtp_senha TEXT,
       demo_ativo INTEGER NOT NULL DEFAULT 0,
       demo_data_manutencao TEXT,
       atualizado_em TEXT NOT NULL DEFAULT (datetime('now'))
@@ -80,6 +83,12 @@ function init() {
     CREATE INDEX IF NOT EXISTS idx_execucoes_chave ON execucoes(chave_conexao);
     CREATE INDEX IF NOT EXISTS idx_logs_execucao ON logs(execucao_id);
   `);
+
+  // Migração de esquema: bancos criados antes da coluna smtp_senha.
+  const colunas = db.prepare('PRAGMA table_info(configuracoes)').all().map(c => c.name);
+  if (!colunas.includes('smtp_senha')) {
+    db.exec('ALTER TABLE configuracoes ADD COLUMN smtp_senha TEXT');
+  }
 
   // Recuperação de queda: execuções que ficaram "em andamento" viram falha.
   const marcadas = db.prepare(
@@ -190,23 +199,29 @@ function getConfiguracao(chaveConexao) {
 
 function salvarConfiguracao(c) {
   const agora = new Date().toISOString();
+  // smtp_senha ausente (undefined) preserva a senha já gravada; string vazia limpa.
+  const senha = c.smtp_senha === undefined
+    ? (get().prepare('SELECT smtp_senha FROM configuracoes WHERE chave_conexao = ?')
+        .get(c.chave_conexao)?.smtp_senha ?? null)
+    : (c.smtp_senha || null);
   get().prepare(`
     INSERT INTO configuracoes (chave_conexao, destino, quantidade_manter, copia_adicional,
       compactar, criptografar, pasta_bin, email_alerta, smtp_host, smtp_porta, smtp_usuario,
-      demo_ativo, demo_data_manutencao, atualizado_em)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      smtp_senha, demo_ativo, demo_data_manutencao, atualizado_em)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(chave_conexao) DO UPDATE SET
       destino=excluded.destino, quantidade_manter=excluded.quantidade_manter,
       copia_adicional=excluded.copia_adicional, compactar=excluded.compactar,
       criptografar=excluded.criptografar, pasta_bin=excluded.pasta_bin,
       email_alerta=excluded.email_alerta, smtp_host=excluded.smtp_host,
       smtp_porta=excluded.smtp_porta, smtp_usuario=excluded.smtp_usuario,
+      smtp_senha=excluded.smtp_senha,
       demo_ativo=excluded.demo_ativo, demo_data_manutencao=excluded.demo_data_manutencao,
       atualizado_em=excluded.atualizado_em
   `).run(c.chave_conexao, c.destino || null, c.quantidade_manter ?? null,
     c.copia_adicional || null, c.compactar ? 1 : 0, c.criptografar ? 1 : 0,
     c.pasta_bin || null, c.email_alerta || null, c.smtp_host || null,
-    c.smtp_porta ?? null, c.smtp_usuario || null, c.demo_ativo ? 1 : 0,
+    c.smtp_porta ?? null, c.smtp_usuario || null, senha, c.demo_ativo ? 1 : 0,
     c.demo_data_manutencao || null, agora);
 }
 

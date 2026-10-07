@@ -9,10 +9,11 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../lib/db');
 
-async function enviarEmailExecucao({ execucao, logs, configuracao }) {
+async function enviarEmailExecucao({ execucao, logs, configuracao, assunto }) {
   const destinatario = configuracao?.email_alerta || 'sbac@localhost'; // padrão para simulação
 
-  const assunto = `[SBAC] Execução #${execucao.id} — ${execucao.status.toUpperCase()} — ${execucao.chave_conexao}`;
+  const titulo = assunto
+    || `[SBAC] Execução #${execucao.id} — ${execucao.status.toUpperCase()} — ${execucao.chave_conexao}`;
   const corpo = [
     `Execução #${execucao.id} da plataforma SBAC`,
     `Conexão: ${execucao.chave_conexao}`,
@@ -30,29 +31,36 @@ async function enviarEmailExecucao({ execucao, logs, configuracao }) {
   if (smtp) {
     try {
       const nodemailer = require('nodemailer');
+      const senha = configuracao.smtp_senha || configuracao.__smtp_senha || null;
+      const remetente = (configuracao.smtp_usuario || '').includes('@')
+        ? configuracao.smtp_usuario
+        : (destinatario.includes('@') ? destinatario : 'sbac@localhost');
       const transporte = nodemailer.createTransport({
         host: smtp,
         port: Number(configuracao.smtp_porta || 587),
         secure: Number(configuracao.smtp_porta) === 465,
-        auth: configuracao.smtp_usuario
-          ? { user: configuracao.smtp_usuario, pass: configuracao.__smtp_senha || null }
+        auth: configuracao.smtp_usuario && senha
+          ? { user: configuracao.smtp_usuario, pass: senha }
           : undefined,
+        connectionTimeout: 15000,
+        greetingTimeout: 15000,
+        socketTimeout: 30000,
       });
       await transporte.sendMail({
-        from: configuracao.smtp_usuario || 'sbac@localhost',
+        from: remetente,
         to: destinatario,
-        subject: assunto,
+        subject: titulo,
         text: corpo,
       });
       return { enviado: true, simulado: false };
     } catch (e) {
       // Falha no envio real → cai na simulação comprovável.
-      await simularEmail(execucao.id, destinatario, assunto, corpo, `Falha no envio SMTP: ${e.message}`);
+      await simularEmail(execucao.id, destinatario, titulo, corpo, `Falha no envio SMTP: ${e.message}`);
       return { enviado: false, simulado: true, motivo: `Falha no envio SMTP: ${e.message}` };
     }
   }
 
-  await simularEmail(execucao.id, destinatario, assunto, corpo, 'SMTP não configurado.');
+  await simularEmail(execucao.id, destinatario, titulo, corpo, 'SMTP não configurado.');
   return { enviado: false, simulado: true, motivo: 'SMTP não configurado.' };
 }
 

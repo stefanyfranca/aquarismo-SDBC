@@ -151,6 +151,7 @@ main { padding: 24px; flex: 1; }
 .msg.ok { display: block; background: var(--verde-fundo); color: var(--verde); }
 .msg.erro { display: block; background: var(--vermelho-fundo); color: var(--vermelho); }
 .msg.info { display: block; background: #dbeafe; color: #1d4ed8; }
+.msg.aviso { display: block; background: #fef3c7; color: #92400e; }
 
 /* ------------------------------ Tabelas ------------------------------ */
 .tabela-wrap { overflow-x: auto; }
@@ -232,6 +233,8 @@ main { padding: 24px; flex: 1; }
 .tabela-integridade th { background: #f8fafc; }
 .status-identico { color: var(--verde); font-weight: 700; }
 .status-divergente { color: var(--vermelho); font-weight: 700; }
+.status-ausente { color: var(--vermelho); font-weight: 700; }
+.status-extra { color: #b45309; font-weight: 700; }
 
 /* ------------------------------ Responsivo --------------------------- */
 @media (max-width: 800px) {

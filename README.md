@@ -127,6 +127,7 @@ nativos (sem bundler).
 | GET | `/api/bancos` | Lista bancos disponíveis |
 | POST | `/api/bancos/selecionar` | Troca o banco da sessão |
 | GET/PUT | `/api/configuracao` | Configurações por conexão |
+| POST | `/api/configuracao/testar-email` | Envia e-mail de teste (ou grava em `data/outbox/`) |
 | POST | `/api/validar` | Testa conexão, permissões e diretórios |
 | POST | `/api/decisao` | Prévia da decisão de manutenção |
 | POST | `/api/execucoes` | Inicia execução (202 + id; 409 se bloqueante) |
@@ -170,6 +171,7 @@ Cobrem: regra de decisão (11, 29/30, 60/61 dias, sem data, escolha explícita),
 - **Autenticação falha**: verifique usuário/senha. A mensagem é clara em português (senha incorreta, host inacessível, banco inexistente).
 - **`pg_dump` não encontrado**: no Windows, informe a pasta `bin` do PostgreSQL em **Configurações → Pasta bin do PostgreSQL**.
 - **Incompatibilidade de versão**: se `pg_dump` for mais antigo que o servidor, a aplicação avisa e pede atualização das ferramentas.
+- **E-mail na falha**: toda execução (sucesso ou falha) dispara um e-mail para o **E-mail de alerta**. Configure **SMTP host/porta/usuário/senha** em Configurações e use **Enviar e-mail de teste** para confirmar o recebimento. A senha SMTP é gravada só em `data/sbac.sqlite` (fora do repositório) e nunca é devolvida pela API.
 - **E-mail não enviado**: sem SMTP configurado, o e-mail é **simulado** e gravado em `data/outbox/email-execucao-N.json/.eml`.
 
 ## Limitações

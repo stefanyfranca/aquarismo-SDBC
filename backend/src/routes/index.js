@@ -9,6 +9,7 @@
  *   GET  /api/bancos              — lista bancos disponíveis
  *   POST /api/bancos/selecionar — troca o banco da sessão
  *   GET|PUT /api/configuracao     — configurações por conexão
+ *   POST /api/configuracao/testar-email — envia e-mail de teste (ou simula)
  *   POST /api/validar             — testa conexão, permissões e diretórios
  *   POST /api/decisao             — prévia da decisão de manutenção
  *   POST /api/execucoes           — inicia execução (202 + id; 409 se bloqueante)

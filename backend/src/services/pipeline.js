@@ -65,6 +65,7 @@ class Executor extends EventEmitter {
     this.etapaAtual = null;
     this.arquivoAtual = null;   // arquivo em produção (dump → enc → zip)
     this.nomeBase = null;       // nome do backup sem extensão (usado pelo ZIP final)
+    this.tabelasOrigem = null;  // nº de tabelas/views do banco de origem (0 = backup vazio)
     this.temporarios = [];      // arquivos a remover ao final
     this.inicio = null;
     this.falha = null;
@@ -199,7 +200,8 @@ class Executor extends EventEmitter {
       db.atualizarExecucao(this.execucaoId, {
         status: 'sucesso',
         fim: new Date().toISOString(),
-        resultado: `Backup concluído: ${this.arquivoAtual}`,
+        resultado: `Backup concluído: ${this.arquivoAtual}`
+          + (this.tabelasOrigem === 0 ? ' (banco de origem sem tabelas — backup vazio)' : ''),
         arquivo_final: this.arquivoAtual,
       });
       this.log('info', 'geral', `Execução #${this.execucaoId} concluída com sucesso.`);
@@ -394,6 +396,28 @@ class Executor extends EventEmitter {
     });
     const st = fs.statSync(destino);
     this.log('info', 'backup', `Dump gerado: ${(st.size / 1024 / 1024).toFixed(2)} MB.`);
+
+    // Banco sem tabelas gera backup vazio (restaura em branco): deixa isso
+    // explícito no log e no resultado da execução, nunca silencioso.
+    try {
+      const pool = s.pool || conexao.conectar(s, p.banco);
+      const r = await pool.query(`
+        SELECT count(*)::int AS n
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relkind IN ('r','p','v','m')
+          AND n.nspname NOT IN ('pg_catalog','information_schema')
+          AND n.nspname NOT LIKE 'pg_temp_%' AND n.nspname NOT LIKE 'pg_toast_%'
+      `);
+      this.tabelasOrigem = Number(r.rows[0].n);
+      if (this.tabelasOrigem === 0) {
+        this.log('aviso', 'backup', 'O banco de origem não possui tabelas de usuário: o backup gerado está vazio e a restauração não terá tabelas nem dados.');
+      } else {
+        this.log('info', 'backup', `Backup inclui ${this.tabelasOrigem} tabela(s)/visão(ões) de usuário.`);
+      }
+    } catch (e) {
+      this.log('aviso', 'backup', `Não foi possível contar as tabelas de origem: ${mascarar(e.message, this.segredos)}`);
+    }
   }
 
   /* ----------------------------- etapa 4 ------------------------------- */

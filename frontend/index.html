@@ -277,6 +277,14 @@
                 <label>SMTP usuário
                   <input type="text" id="cf-smtp-usuario">
                 </label>
+                <label>SMTP senha
+                  <input type="password" id="cf-smtp-senha" autocomplete="new-password"
+                         placeholder="em branco = manter a atual">
+                </label>
+                <label class="switch-linha" id="cf-smtp-linha" style="display:none">
+                  <span>Remover senha SMTP</span>
+                  <span class="switch"><input type="checkbox" id="cf-smtp-limpar"><span class="slider"></span></span>
+                </label>
                 <label class="switch-linha">
                   <span>Modo demonstração</span>
                   <span class="switch"><input type="checkbox" id="cf-demo"><span class="slider"></span></span>
@@ -294,12 +302,13 @@
               </form>
               <div class="linha-botoes">
                 <button type="submit" form="form-config" class="btn btn-primario">Salvar configurações</button>
+                <button type="button" id="cf-testar-email" class="btn btn-secundario">Enviar e-mail de teste</button>
               </div>
               <div id="msg-config" class="msg"></div>
             </div>
             <div class="cartao cartao-lateral">
               <h3>Configuração ativa</h3>
-              <p class="muted">Estas configurações valem para a <strong>próxima</strong> execução. Elas ficam salvas localmente (fora do banco-alvo) e não incluem senhas.</p>
+              <p class="muted">Estas configurações valem para a <strong>próxima</strong> execução. Elas ficam salvas localmente (fora do banco-alvo); a única senha guardada é a de SMTP, que nunca é devolvida pela API.</p>
               <ul id="config-ativa" class="lista-resumo"></ul>
             </div>
           </div>
